@@ -22,6 +22,7 @@ import com.keybox.manage.util.SessionOutputUtil;
 
 import javax.websocket.Session;
 import java.sql.Connection;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -42,8 +43,9 @@ public class SentOutputTask implements Runnable {
     public void run() {
 
         Connection con = DBUtils.getConn();
+        List<StringBuilder> inputLine = new ArrayList<StringBuilder>();
         while (session.isOpen()) {
-            List<SessionOutput> outputList = SessionOutputUtil.getOutput(con, sessionId);
+            List<SessionOutput> outputList = SessionOutputUtil.getOutput(con, sessionId, inputLine);
             try {
                 if (outputList != null && !outputList.isEmpty()) {
                     String json = new Gson().toJson(outputList);

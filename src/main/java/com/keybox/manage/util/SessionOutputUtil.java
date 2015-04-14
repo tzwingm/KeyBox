@@ -34,7 +34,8 @@ public class SessionOutputUtil {
 
     private static Map<Long, UserSessionsOutput> userSessionsOutputMap = new ConcurrentHashMap<Long, UserSessionsOutput>();
     public static boolean enableAudit = "true".equals(AppConfig.getProperty("enableAudit"));
-
+    private static final String ec2_user = "[ec2-user";
+    
 
     /**
      * removes session for user session
@@ -108,9 +109,10 @@ public class SessionOutputUtil {
      * returns list of output lines
      *
      * @param sessionId session id object
+     * @param inputLine 
      * @return session output list
      */
-    public static List<SessionOutput> getOutput(Connection con, Long sessionId) {
+    public static List<SessionOutput> getOutput(Connection con, Long sessionId, List<StringBuilder> inputLine) {
         List<SessionOutput> outputList = new ArrayList<SessionOutput>();
 
 
@@ -138,7 +140,40 @@ public class SessionOutputUtil {
                             outputList.add(sessionOutput);
 
                             if (enableAudit) {
-                                SessionAuditDB.insertTerminalLog(con, sessionOutput);
+                        		inputLine.add(sb);
+                        		String outLine = sb.toString();
+                        		boolean cr     = ((sb.charAt(0) == 13) && (sb.charAt(1) == 10));
+                        		boolean prompt = (outLine.contains(ec2_user) && outLine.contains("$ "));
+                            	if(cr || prompt) {
+                            		boolean promptLine;
+                            		outLine = "";
+//                                    SessionOutput sessionOutputLine = new SessionOutput();
+//                                    sessionOutputLine = sessionOutput;
+                                    for( StringBuilder s : inputLine) {
+                                    	String line = s.toString();
+                                    	promptLine = (line.contains(ec2_user) && line.contains("$ "));
+                                    	if(promptLine) {
+                                     		int iPosCr = line.indexOf(10);
+                                    		int iPosEc2 = line.indexOf(ec2_user);
+                                    		while((-1 != iPosCr) && (iPosCr < iPosEc2))
+                                    		{
+                                    			outLine += line.substring(0, iPosCr+1);
+                                    			line = line.substring(iPosCr+1);
+                                    			iPosCr = line.indexOf(10);
+                                        		iPosEc2 = line.indexOf(ec2_user);
+                                    		}
+                                    		// Line should now contain only the prompt.
+                                    		int iPos = line.indexOf(ec2_user);
+                                    		if( -1 != iPos) {
+                                    			line = line.substring(iPos);
+                                    		}
+                                    	}
+                                    	outLine += line;
+                                    }
+                                    inputLine.clear();
+                                    sessionOutput.setOutput(outLine);
+                                    SessionAuditDB.insertTerminalLog(con, sessionOutput);
+                            	}
                             }
 
                             userSessionsOutput.getSessionOutputMap().put(key, new SessionHostOutput(hostId, new StringBuilder()));
