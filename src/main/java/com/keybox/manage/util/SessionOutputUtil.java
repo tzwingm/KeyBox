@@ -138,44 +138,10 @@ public class SessionOutputUtil {
 
                         if (StringUtils.isNotEmpty(sessionOutput.getOutput())) {
                             outputList.add(sessionOutput);
-
+                                                      
                             if (enableAudit) {
-                        		inputLine.add(sb);
-                        		String outLine = sb.toString();
-                        		boolean cr     = ((sb.charAt(0) == 13) && (sb.charAt(1) == 10));
-                        		boolean prompt = (outLine.contains(ec2_user) && outLine.contains("$ "));
-                            	if(cr || prompt) {
-                            		boolean promptLine;
-                            		outLine = "";
-//                                    SessionOutput sessionOutputLine = new SessionOutput();
-//                                    sessionOutputLine = sessionOutput;
-                                    for( StringBuilder s : inputLine) {
-                                    	String line = s.toString();
-                                    	promptLine = (line.contains(ec2_user) && line.contains("$ "));
-                                    	if(promptLine) {
-                                     		int iPosCr = line.indexOf(10);
-                                    		int iPosEc2 = line.indexOf(ec2_user);
-                                    		while((-1 != iPosCr) && (iPosCr < iPosEc2))
-                                    		{
-                                    			outLine += line.substring(0, iPosCr+1);
-                                    			line = line.substring(iPosCr+1);
-                                    			iPosCr = line.indexOf(10);
-                                        		iPosEc2 = line.indexOf(ec2_user);
-                                    		}
-                                    		// Line should now contain only the prompt.
-                                    		int iPos = line.indexOf(ec2_user);
-                                    		if( -1 != iPos) {
-                                    			line = line.substring(iPos);
-                                    		}
-                                    	}
-                                    	outLine += line;
-                                    }
-                                    inputLine.clear();
-                                    sessionOutput.setOutput(outLine);
-                                    SessionAuditDB.insertTerminalLog(con, sessionOutput);
-                            	}
+                            	setAudit(con, sb, sessionOutput, inputLine);
                             }
-
                             userSessionsOutput.getSessionOutputMap().put(key, new SessionHostOutput(hostId, new StringBuilder()));
                         }
                     }
@@ -191,5 +157,102 @@ public class SessionOutputUtil {
         return outputList;
     }
 
+	/**
+	 * saves sb data to database
+	 * @param con 
+	 *  
+	 * @param sb			- 	output from host
+	 * @param sessionOutput	- 	output for the session
+	 * @param inputLine 
+	 */
+	private static void setAudit(Connection con, StringBuilder sb, SessionOutput sessionOutput, List<StringBuilder> inputLine) {
+    	//
+    	// Check for end of Input line
+		boolean cr     = false;
+		int     keySb  = 0;
+		if( 2 <= sb.length()) {
+			cr     = ((sb.charAt(0) == 13) && (sb.charAt(1) == 10));
+		} else {
+			// TAB - 7
+			keySb = sb.charAt(0);
+		}
+		// Check for "reverse-i-search"
+		boolean ctrlR  = ((sb.charAt(0) == '\b') && (sb.charAt(1) == '\b') && (sb.charAt(2) == '\b'));
 
+		switch(keySb) {
+		case 0:
+		{
+			if(cr) {
+				String outCommand = "";
+				for( StringBuilder s : inputLine) {
+					String line = s.toString();
+					outCommand += line;
+				}
+				sessionOutput.setOutput(outCommand);
+				// save Command to database
+				SessionAuditDB.insertTerminalLog(con, sessionOutput);
+				inputLine.clear();
+			} else if( ctrlR ) {
+				// skip here "reverse-i-search" string, saved in inputline[0]
+
+				// take only the content of command - etc. "l : ll" short input, and command
+				String outCommand  = sb.toString().substring(3);
+				int iPos = outCommand.indexOf('\b');
+				if( -1 != iPos ) {
+					outCommand = outCommand.substring(0, iPos);
+				}
+				sessionOutput.setOutput(outCommand);
+				// save Command to database
+				SessionAuditDB.insertTerminalLog(con, sessionOutput);
+				inputLine.clear();
+			}
+			if( !ctrlR ) {
+				inputLine.add(sb);
+				//
+				// check for prompt in key
+				String outLine = sb.toString();
+				boolean prompt = (outLine.contains(ec2_user) && outLine.contains("$ "));
+				if(prompt) {
+					outLine = "";
+					String[] lines = sb.toString().split("\n");
+					for(String line: lines){
+//						System.out.println("Content = " + line);
+//						System.out.println("Length = " + line.length());
+						if((line.contains(ec2_user) && line.contains("$ "))) {
+							// Line should now contain only the prompt.
+							int iPos = line.indexOf(ec2_user);
+							if( -1 != iPos) {
+								line = line.substring(iPos);
+							}
+						} else {
+							line += "\n";
+						}
+						outLine += line;
+					}
+
+					sessionOutput.setOutput(outLine);
+					SessionAuditDB.insertTerminalLog(con, sessionOutput);
+					inputLine.clear();
+				}
+			}
+			break;
+		}
+		case 7:
+		{
+			String outCommand = "";
+			for( StringBuilder s : inputLine) {
+				if(7 != s.charAt(0)) {
+					String line = s.toString();
+					outCommand += line;					
+				}
+			}
+			sessionOutput.setOutput(outCommand);
+			// save Command to database
+			SessionAuditDB.insertTerminalLog(con, sessionOutput);
+			inputLine.clear();
+			break;
+			
+		}
+		}
+	}
 }
