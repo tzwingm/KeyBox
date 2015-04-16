@@ -177,7 +177,16 @@ public class SessionOutputUtil {
 			keySb = sb.charAt(0);
 		}
 		// Check for "reverse-i-search"
-		boolean ctrlR  = ((sb.charAt(0) == '\b') && (sb.charAt(1) == '\b') && (sb.charAt(2) == '\b'));
+//		boolean ctrlR  = ((sb.charAt(0) == '\b') && (sb.charAt(1) == '\b') && (sb.charAt(2) == '\b'));
+		boolean ctrlR  = false;
+		for( StringBuilder s : inputLine) {
+			String line = s.toString();
+			ctrlR = line.contains("reverse-i-search");
+			if( ctrlR ) {
+				System.out.println("reverse-i-search = activated !");
+				break;
+			}
+		}		
 
 		switch(keySb) {
 		case 0:
@@ -188,15 +197,21 @@ public class SessionOutputUtil {
 					String line = s.toString();
 					outCommand += line;
 				}
+				outCommand = removeBacks(outCommand);
 				sessionOutput.setOutput(outCommand);
 				// save Command to database
 				SessionAuditDB.insertTerminalLog(con, sessionOutput);
+				// set Output of new line
+				sessionOutput.setOutput("\r\n");
 				inputLine.clear();
 			} else if( ctrlR ) {
 				// skip here "reverse-i-search" string, saved in inputline[0]
 
 				// take only the content of command - etc. "l : ll" short input, and command
 				String outCommand  = sb.toString().substring(3);
+				
+				System.out.println("reverse-i-search string :"+outCommand);
+				
 				int iPos = outCommand.indexOf('\b');
 				if( -1 != iPos ) {
 					outCommand = outCommand.substring(0, iPos);
@@ -216,8 +231,11 @@ public class SessionOutputUtil {
 					outLine = "";
 					String[] lines = sb.toString().split("\n");
 					for(String line: lines){
-//						System.out.println("Content = " + line);
-//						System.out.println("Length = " + line.length());
+						if('\r' == line.charAt(line.length()-1)) {
+							line += "\n";
+						}
+						//						System.out.println("Content = " + line);
+						//						System.out.println("Length = " + line.length());
 						if((line.contains(ec2_user) && line.contains("$ "))) {
 							// Line should now contain only the prompt.
 							int iPos = line.indexOf(ec2_user);
@@ -225,7 +243,6 @@ public class SessionOutputUtil {
 								line = line.substring(iPos);
 							}
 						} else {
-							line += "\n";
 						}
 						outLine += line;
 					}
@@ -253,6 +270,49 @@ public class SessionOutputUtil {
 			break;
 			
 		}
+		default:
+		{
+			inputLine.add(sb);
 		}
+		}
+	}
+
+	/**
+	 * Removes characters from String for each "\b"
+	 * is used for CURSOR UP/DOWN for commands
+	 * 
+	 * @param outCommand	- Input string
+	 * @return
+	 */
+	private static String removeBacks(String outCommand) {
+		String s = outCommand;
+		int iPos = 0;
+		// remove "\b"
+		s = replaceSigns(s, "\b", -1, 1);
+		while(-1 != (iPos=s.indexOf("\b"))) {
+			String sub = s.substring(iPos-1,iPos+1);
+			s = s.replace(sub, "");
+		}
+		// remove "x[1P"
+		while(-1 != (iPos=s.indexOf("[1P"))) {
+			String sub = s.substring(iPos-1,iPos+3);
+			s = s.replace(sub, "");
+		}
+		
+		return s;
+	}
+
+	private static String replaceSigns(String s, String search, int offStart, int offEnd) {
+		int iPos = 0;
+		int iPosStart;
+		int iPosEnd;
+		while(-1 != (iPos=s.indexOf(search))) {
+			iPosStart = iPos+offStart;
+			iPosEnd   = iPos+offEnd;
+			String sub = s.substring(iPosStart, iPosEnd);
+			s = s.replace(sub, "");
+		}
+		// TODO Auto-generated method stub
+		return s;
 	}
 }
