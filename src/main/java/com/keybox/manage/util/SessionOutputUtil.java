@@ -35,7 +35,20 @@ public class SessionOutputUtil {
     private static Map<Long, UserSessionsOutput> userSessionsOutputMap = new ConcurrentHashMap<Long, UserSessionsOutput>();
     public static boolean enableAudit = "true".equals(AppConfig.getProperty("enableAudit"));
     private static final String ec2_user = "[ec2-user";
-    
+
+	static final int BEL = 7;
+	static final int BS  = 8;
+	static final int ESC = 27;
+	static final String CHAR_BS      				= Character.toString((char)BS);
+	static final String CHAR_BEL      				= Character.toString((char)BEL);
+	static final String CHAR_ESC      				= Character.toString((char)ESC);
+	static final String CURSOR_RIGHT 				= Character.toString((char)ESC)+"[C";
+	static final String CURSOR_BACK_FROM_END        = CHAR_ESC+"[K";
+	static final String CURSOR_DELETE_BACK_FROM_END = CHAR_BS+CHAR_ESC+"[K";
+	static final String CURSOR_DELETE_BACK_FROM_POS = CHAR_BS+CHAR_ESC+"[1P";
+	static final String STRING_STRG_R               = "reverse-i-search";
+	
+
 
     /**
      * removes session for user session
@@ -157,6 +170,15 @@ public class SessionOutputUtil {
         return outputList;
     }
 
+    static final int KEYSB_CR          = 0;		// CRLF is given
+    static final int KEYSB_STRGC       = 1;		// ^C
+    static final int KEYSB_STRGR       = 2;		// ^C
+    static final int KEYSB_BEL         = 3;		// BEL
+    static final int KEYSB_BEL_CONTENT = 4;		// Text for last BEL
+    static final int KEYSB_DONE        = 5;		// Key is done, no output to database
+    static final int KEYSB_INIT_TERM   = 6;    	// First output on terminal screen
+    static final int KEYSB_INIT_TERM_P = 7;    	// First output prompt on terminal screen
+    static final int KEYSB_UNKNOWN     = -1;	// unknown command or input
 	/**
 	 * saves sb data to database
 	 * @param con 
@@ -164,16 +186,104 @@ public class SessionOutputUtil {
 	 * @param sb			- 	output from host
 	 * @param sessionOutput	- 	output for the session
 	 * @param inputLine 
+	 * 					
 	 */
 	private static void setAudit(Connection con, StringBuilder sb, SessionOutput sessionOutput, List<StringBuilder> inputLine) {
     	//
     	// Check for end of Input line
-		final int BEL = 7;
 		boolean cr     = false; // CRLF
+		boolean strgC  = false; // Line break ^C
 		boolean bel	   = false;	// BEL 7
-		int     keySb  = 0;
+		//
+		// select command or output data
+		int     keySb  = changeInput(inputLine, sb);
+		if(0 < inputLine.get(1).length()) {
+			bel = ( CHAR_BEL.contains(inputLine.get(1).toString()) );			
+		}
+		
+		switch(keySb) {
+		case KEYSB_CR:
+		{
+			//
+			// get the commandline
+			String outCommand = inputLine.get(0).toString();
+			sessionOutput.setOutput(outCommand);
+			// save Command to database
+			SessionAuditDB.insertTerminalLog(con, sessionOutput);
+			// set Output of new line
+			sessionOutput.setOutput("\r\n");
+			bel = false;
+		}
+		case KEYSB_INIT_TERM:
+		{
+			//
+			// check for prompt in key
+			String outLine = sb.toString();
+			boolean prompt = (outLine.contains(ec2_user) && outLine.contains("$ "));
+			if(prompt) {
+				outLine    = "";
+				int iCount = 0;
+				// System.getProperty("line.separator")
+				String[] lines = sb.toString().split("\n");
+				for(String line: lines) {
+					if('\r' == line.charAt(line.length()-1)) {
+						line += "\n";
+					}
+					//						System.out.println("Content = " + line);
+					//						System.out.println("Length = " + line.length());
+					if(line.contains(ec2_user)) { 
+						if(line.contains("$ ")) {
+							// Line should now contain only the prompt.
+							int iPos = line.indexOf(ec2_user);
+							if( -1 != iPos) {
+								line = line.substring(iPos);
+							}
+						} else if((0 == iCount) && line.contains("$") && STRING_STRG_R.contains(inputLine.get(1).toString())) {
+							line = "";
+						}
+					} else {
+					}
+					outLine += line;
+					iCount++;
+				}
+				sessionOutput.setOutput(outLine);
+				SessionAuditDB.insertTerminalLog(con, sessionOutput);
+				if(!bel) {
+					System.out.println("Clearing inputs for no ctrlR !");
+					if(0 < inputLine.size()) {
+						inputLine.set(0, new StringBuilder());
+					}
+				}
+			} else {
+//				System.out.println("!Promt - Adding input <"+sb.toString()+">");					
+//				inputLine.add(sb);
+			}
+		}
+		case KEYSB_STRGC:
+		{
+			if(!bel) {
+				inputLine.set(0, new StringBuilder());
+				inputLine.set(1, new StringBuilder());
+			}
+			break;
+		}
+		case KEYSB_DONE:
+		{
+			break;
+		}
+		case KEYSB_UNKNOWN:
+		{
+			break;
+		}
+		}
+		
+		
+		if(false) {
+		
+		
 		if( 2 <= sb.length()) {
 			cr     = ((sb.charAt(0) == 13) && (sb.charAt(1) == 10));
+			strgC  = ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'));
 		} else {
 			// TAB - 7 ( BEL )
 			keySb = sb.charAt(0);
@@ -202,7 +312,40 @@ public class SessionOutputUtil {
 			ex.toString();
 		}
 		switch(keySb) {
-		case 0:
+		case KEYSB_CR:
+		{
+			//
+			// get the commandline
+			String outCommand = inputLine.get(0).toString();
+			sessionOutput.setOutput(outCommand);
+			// save Command to database
+			SessionAuditDB.insertTerminalLog(con, sessionOutput);
+			// set Output of new line
+			sessionOutput.setOutput("\r\n");
+			if(!bel) {
+				System.out.println("Clearing inputs for cr !");
+				inputLine.clear();
+			}
+			
+			break;
+		}
+		case KEYSB_STRGC:
+		{
+			break;
+		}
+		case KEYSB_DONE:
+		{
+			break;
+		}
+		case KEYSB_INIT_TERM:
+		{
+			break;
+		}
+		case KEYSB_UNKNOWN:
+		{
+			break;
+		}
+		case 100:
 		{
 			if(cr) {
 				//
@@ -229,6 +372,7 @@ public class SessionOutputUtil {
 				// set Output of new line
 				sessionOutput.setOutput("\r\n");
 				if(!bel) {
+					System.out.println("Clearing inputs for cr !");
 					inputLine.clear();
 				}
 			} else if( ctrlR ) {
@@ -246,6 +390,7 @@ public class SessionOutputUtil {
 				sessionOutput.setOutput(outCommand);
 				// save Command to database
 				SessionAuditDB.insertTerminalLog(con, sessionOutput);
+				System.out.println("Clearing inputs for ctrlR !");
 				inputLine.clear();
 			}
 			if( !ctrlR ) {
@@ -277,8 +422,12 @@ public class SessionOutputUtil {
 					sessionOutput.setOutput(outLine);
 					SessionAuditDB.insertTerminalLog(con, sessionOutput);
 					if(!bel) {
+						System.out.println("Clearing inputs for no ctrlR !");
 						inputLine.clear();
 					}
+				} else {
+					System.out.println("!Promt - Adding input <"+sb.toString()+">");					
+					inputLine.add(sb);
 				}
 			}
 			break;
@@ -287,15 +436,195 @@ public class SessionOutputUtil {
 		{
 			//
 			// Save here the BEL information for next call
+			System.out.println("BEL - Adding input <"+sb.toString()+">");
 			inputLine.add(sb);
 			break;
 			
 		}
 		default:
 		{
+			System.out.println("Default - Adding input <"+sb.toString()+">");
+//			inputLine.add(sb);
+		}
+		}
+		}
+	}
+
+	/**
+	 * Gets input strings from terminal
+	 * This method should substitute all Cursor codes like BS, ESC[K ... 
+	 * 
+	 * @param inputLine
+	 * @param sb
+	 * @return
+	 */
+	private static int changeInput(List<StringBuilder> inputLine, StringBuilder sb) {
+		String input = sb.toString();
+		int     keySb  = KEYSB_UNKNOWN;
+		
+		if( 1 == sb.length()) {
+			if(BEL == sb.charAt(0)) {	// Tabulator
+				keySb = KEYSB_BEL;
+				inputLine.set(1, new StringBuilder(CHAR_BEL));
+			}
+		} else if( 2 <= sb.length()) {
+			if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
+				keySb  = KEYSB_CR;
+			} else if( ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'))) { // StrgC
+				keySb  = KEYSB_STRGC;
+			} else if(0 == input.indexOf("Last login:")) {			// first message on the terminal
+				keySb = KEYSB_INIT_TERM;
+				inputLine.set(2, sb);
+			} else if(input.contains(STRING_STRG_R)) {				// StrgR reverse seach
+				keySb = KEYSB_STRGR;
+				inputLine.set(1, new StringBuilder(STRING_STRG_R));
+			} else if(input.contains(ec2_user) && input.contains("$ ")) {	// Prompt 
+				if(0 == inputLine.get(3).length()) {
+					inputLine.set(3, sb);	// set first prompt from start
+					keySb = KEYSB_INIT_TERM_P;
+				} else if(inputLine.get(1).toString().contains(STRING_STRG_R)) {
+					keySb = KEYSB_CR;
+				}
+			}
+		}
+		
+		if (KEYSB_UNKNOWN == keySb){
+			boolean bs	   = false;	// BS  8
+
+			System.out.println("changeInput - getting <"+input+">");
+			//
+			// At this point we get the optimized Inputs
+			//
+			if(0 < input.length())	{ // One character
+				input = buildCommandLine(inputLine, sb);
+			}			
+		}
+
+		return keySb;
+	}
+
+	/**
+	 * Looks for special Key action like
+	 * BS, BSESC[K ..
+	 * 
+	 * @param inputLine	- actual, before next, buffer for command
+	 * @param sb		- next data from input
+	 * @return
+	 */
+	private static String buildCommandLine(List<StringBuilder> inputLine, StringBuilder sb) {
+		//
+		// find command for the result from the host
+		String outCommand  = "";
+		String LastCommand = "";
+		String input       = sb.toString();
+		StringBuilder sbLast = new StringBuilder();
+		if(0 < inputLine.size()) {
+			sbLast = inputLine.get(0);
+			if(1 == input.length()) {
+				sbLast.append(sb);
+			} else if((0 < inputLine.get(1).length()) && (BEL == inputLine.get(1).charAt(0))) {
+				
+			} else if((0<inputLine.get(1).length()) && (STRING_STRG_R.contains(inputLine.get(1).toString()))) {
+				// reverse search is active
+				if(input.contains("@ip")) {
+					// here we get only a prompt string like "[6@[ec2-user@ip-172-31-3-88 ~]$[C[C"
+					// this comes instead of CR !					
+				} else {
+					// here we get a string like "p': pwd" or "[C[C[C-tr[K"
+					int iPosCursorRight = 0;
+					int iCount          = 0;
+					while( -1 < (iPosCursorRight=sb.indexOf(CURSOR_RIGHT)) ) {
+						sb.delete(iPosCursorRight, iPosCursorRight+CURSOR_RIGHT.length());
+						iCount++;
+					}
+					iPosCursorRight = sbLast.indexOf("': ");
+					if(-1 < iPosCursorRight) {
+						int startDelete = iPosCursorRight+3+iCount;
+						int len = sbLast.length();
+						if(startDelete < len) {
+							sbLast.delete(startDelete, len);
+						}
+					}
+					//
+					//	is on "ESC[K" behind the command
+					iPosCursorRight   = sb.indexOf(CURSOR_BACK_FROM_END);
+					if(-1 < iPosCursorRight) {
+						sb.delete(iPosCursorRight, iPosCursorRight+CURSOR_BACK_FROM_END.length());
+					}
+					
+					// remove "\b"
+					sbLast.append(new StringBuilder( replaceSigns(sb.toString(), "\b", 0, 1) ));									
+				}
+				
+			} else {
+				int iCount = 0;
+				//
+				//	is on "ESC[K" before the command
+				int iPos   = sb.indexOf(CURSOR_DELETE_BACK_FROM_END);
+				if(-1 == iPos) {
+					iPos = sb.length();
+				}
+				for( ; iCount<sb.length(); iCount++) {
+					char c = sb.charAt(iCount);
+					if(BS == c) {
+						if(0 < sbLast.length()) {
+							sbLast.deleteCharAt(sbLast.length()-1);
+							if(iCount == iPos) {
+								iCount += CURSOR_DELETE_BACK_FROM_END.length()-1;
+							}
+						} else
+						{
+							break;
+						}
+					} else {
+						break;
+					}
+				}
+				sb.replace(0, iCount, "");
+				//
+				// Now search for "ESC[xP"
+				if(3 < sb.length()) {
+					boolean bFoundEsc = false;
+					int iPosEsc = sb.indexOf(CHAR_ESC+"[");
+					String number = "";
+					if(-1 != iPosEsc) {
+						for( int i = iPosEsc+2; i<sb.length(); i++) {
+							Character c = sb.charAt(i);
+							if(!Character.isDigit(c)) {
+								if(c == 'P') {
+									bFoundEsc = true;
+									break;
+								}
+							} else {
+								number += c;
+							}
+						}
+						if(bFoundEsc) {
+							long lPosition = Integer.valueOf(number);
+							// Delete characters from input string
+							sb.delete(iPosEsc, iPosEsc+3+number.length());
+						}
+					}
+				}
+				//
+				//	is on "ESC[K" behind the command
+				iPos   = sb.indexOf(CURSOR_BACK_FROM_END);
+				if(-1 < iPos) {
+					sb.delete(iPos, iPos+CURSOR_BACK_FROM_END.length());
+				}
+				
+				
+				
+				sbLast.append(sb);
+			}
+			inputLine.set(0, sbLast);
+			
+		} else {
 			inputLine.add(sb);
 		}
-		}
+		outCommand = inputLine.get(0).toString();
+		System.out.println("buildCommandLine -  <"+outCommand+">");
+		return outCommand;
 	}
 
 	/**
@@ -327,7 +656,7 @@ public class SessionOutputUtil {
 		int iPos = 0;
 		int iPosStart;
 		int iPosEnd;
-		while(-1 != (iPos=s.indexOf(search))) {
+		while(-1 < (iPos=s.indexOf(search))) {
 			iPosStart = iPos+offStart;
 			iPosEnd   = iPos+offEnd;
 			String sub = s.substring(iPosStart, iPosEnd);

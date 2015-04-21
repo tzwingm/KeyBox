@@ -44,6 +44,11 @@ public class SentOutputTask implements Runnable {
 
         Connection con = DBUtils.getConn();
         List<StringBuilder> inputLine = new ArrayList<StringBuilder>();
+        inputLine.add(new StringBuilder());		// 0	-	LastCommand
+        inputLine.add(new StringBuilder());		// 1	-	BEL ( TAB ), strgR, when active
+        inputLine.add(new StringBuilder());		// 2	-	Last Login message from start
+        inputLine.add(new StringBuilder());		// 3	-	prompt
+        
         while (session.isOpen()) {
             List<SessionOutput> outputList = SessionOutputUtil.getOutput(con, sessionId, inputLine);
             try {

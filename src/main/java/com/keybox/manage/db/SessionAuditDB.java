@@ -242,6 +242,7 @@ public class SessionAuditDB {
                 stmt.setString(4, sessionOutput.getOutput());
                 stmt.execute();
                 DBUtils.closeStmt(stmt);
+				System.out.println("Saved to database <"+sessionOutput.getOutput()+">");
             }
 
         } catch (Exception e) {
