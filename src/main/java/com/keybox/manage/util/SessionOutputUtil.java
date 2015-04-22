@@ -36,17 +36,6 @@ public class SessionOutputUtil {
     public static boolean enableAudit = "true".equals(AppConfig.getProperty("enableAudit"));
     private static final String ec2_user = "[ec2-user";
 
-	static final int BEL = 7;
-	static final int BS  = 8;
-	static final int ESC = 27;
-	static final String CHAR_BS      				= Character.toString((char)BS);
-	static final String CHAR_BEL      				= Character.toString((char)BEL);
-	static final String CHAR_ESC      				= Character.toString((char)ESC);
-	static final String CURSOR_RIGHT 				= Character.toString((char)ESC)+"[C";
-	static final String CURSOR_BACK_FROM_END        = CHAR_ESC+"[K";
-	static final String CURSOR_DELETE_BACK_FROM_END = CHAR_BS+CHAR_ESC+"[K";
-	static final String CURSOR_DELETE_BACK_FROM_POS = CHAR_BS+CHAR_ESC+"[1P";
-	static final String STRING_STRG_R               = "reverse-i-search";
 	
 
 
@@ -179,7 +168,20 @@ public class SessionOutputUtil {
     static final int KEYSB_INIT_TERM   = 6;    	// First output on terminal screen
     static final int KEYSB_INIT_TERM_P = 7;    	// First output prompt on terminal screen
     static final int KEYSB_UNKNOWN     = -1;	// unknown command or input
-	/**
+
+	static final int BEL = 7;
+	static final int BS  = 8;
+	static final int ESC = 27;
+	static final String CHAR_BS      				           = Character.toString((char)BS);
+	static final String CHAR_BEL      				           = Character.toString((char)BEL);
+	static final String CHAR_ESC      				           = Character.toString((char)ESC);
+	static final String CURSOR_RIGHT 				           = Character.toString((char)ESC)+"[C";
+	static final String CURSOR_BACK_FROM_END                   = CHAR_ESC+"[K";
+	static final String CURSOR_DELETE_BACK_FROM_END            = CHAR_BS+CHAR_ESC+"[K";
+	static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_BS+CHAR_ESC+"[";  // n"P"
+	static final String STRING_STRG_R                          = "reverse-i-search";
+    
+    /**
 	 * saves sb data to database
 	 * @param con 
 	 *  
@@ -275,177 +277,9 @@ public class SessionOutputUtil {
 		{
 			break;
 		}
-		}
-		
-		
-		if(false) {
-		
-		
-		if( 2 <= sb.length()) {
-			cr     = ((sb.charAt(0) == 13) && (sb.charAt(1) == 10));
-			strgC  = ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'));
-		} else {
-			// TAB - 7 ( BEL )
-			keySb = sb.charAt(0);
-			bel   = (BEL == keySb);
-		}
-		// Check for "reverse-i-search"
-		boolean ctrlR  = false;
-		int icount    = 0;
-		int iBelIndex = -1;
-		for( StringBuilder s : inputLine) {
-			String line = s.toString();
-			ctrlR = line.contains("reverse-i-search");
-			if(((1 == line.length()) && (BEL == line.charAt(0)))) {
-				iBelIndex = icount;
-				System.out.println("BEL is activated !");
-			}
-			bel = bel || (iBelIndex == icount);
-			if( ctrlR ) {
-				System.out.println("reverse-i-search is activated !");
-				break;
-			}
-			icount++;
-		}	
-		if(0 <= iBelIndex){
-			StringBuilder ex = inputLine.remove(iBelIndex);
-			ex.toString();
-		}
-		switch(keySb) {
-		case KEYSB_CR:
-		{
-			//
-			// get the commandline
-			String outCommand = inputLine.get(0).toString();
-			sessionOutput.setOutput(outCommand);
-			// save Command to database
-			SessionAuditDB.insertTerminalLog(con, sessionOutput);
-			// set Output of new line
-			sessionOutput.setOutput("\r\n");
-			if(!bel) {
-				System.out.println("Clearing inputs for cr !");
-				inputLine.clear();
-			}
-			
-			break;
-		}
-		case KEYSB_STRGC:
-		{
-			break;
-		}
-		case KEYSB_DONE:
-		{
-			break;
-		}
-		case KEYSB_INIT_TERM:
-		{
-			break;
-		}
-		case KEYSB_UNKNOWN:
-		{
-			break;
-		}
-		case 100:
-		{
-			if(cr) {
-				//
-				// find command for the result from the host
-				String outCommand = "";
-				boolean isSimpleInput       = false;
-				boolean isCursorUpDownInput = false;
-				String line = "";
-				for( StringBuilder s : inputLine) {
-					line = s.toString();
-					if(1 == line.length()) {
-						isSimpleInput = true;
-					} else if(line.contains("\b") || (1 < line.length())) {
-						isCursorUpDownInput = true;
-					}
-					outCommand += line;
-				}
-				if(isCursorUpDownInput && !isSimpleInput) {
-					outCommand = removeBacks(line); // take last command
-				}
-				sessionOutput.setOutput(outCommand);
-				// save Command to database
-				SessionAuditDB.insertTerminalLog(con, sessionOutput);
-				// set Output of new line
-				sessionOutput.setOutput("\r\n");
-				if(!bel) {
-					System.out.println("Clearing inputs for cr !");
-					inputLine.clear();
-				}
-			} else if( ctrlR ) {
-				// skip here "reverse-i-search" string, saved in inputline[0]
-
-				// take only the content of command - etc. "l : ll" short input, and command
-				String outCommand  = sb.toString().substring(3);
-				
-				System.out.println("reverse-i-search string :"+outCommand);
-				
-				int iPos = outCommand.indexOf('\b');
-				if( -1 != iPos ) {
-					outCommand = outCommand.substring(0, iPos);
-				}
-				sessionOutput.setOutput(outCommand);
-				// save Command to database
-				SessionAuditDB.insertTerminalLog(con, sessionOutput);
-				System.out.println("Clearing inputs for ctrlR !");
-				inputLine.clear();
-			}
-			if( !ctrlR ) {
-				//
-				// check for prompt in key
-				String outLine = sb.toString();
-				boolean prompt = (outLine.contains(ec2_user) && outLine.contains("$ "));
-				if(prompt) {
-					outLine = "";
-					// System.getProperty("line.separator")
-					String[] lines = sb.toString().split("\n");
-					for(String line: lines){
-						if('\r' == line.charAt(line.length()-1)) {
-							line += "\n";
-						}
-						//						System.out.println("Content = " + line);
-						//						System.out.println("Length = " + line.length());
-						if((line.contains(ec2_user) && line.contains("$ "))) {
-							// Line should now contain only the prompt.
-							int iPos = line.indexOf(ec2_user);
-							if( -1 != iPos) {
-								line = line.substring(iPos);
-							}
-						} else {
-						}
-						outLine += line;
-					}
-
-					sessionOutput.setOutput(outLine);
-					SessionAuditDB.insertTerminalLog(con, sessionOutput);
-					if(!bel) {
-						System.out.println("Clearing inputs for no ctrlR !");
-						inputLine.clear();
-					}
-				} else {
-					System.out.println("!Promt - Adding input <"+sb.toString()+">");					
-					inputLine.add(sb);
-				}
-			}
-			break;
-		}
-		case BEL:
-		{
-			//
-			// Save here the BEL information for next call
-			System.out.println("BEL - Adding input <"+sb.toString()+">");
-			inputLine.add(sb);
-			break;
-			
-		}
 		default:
 		{
-			System.out.println("Default - Adding input <"+sb.toString()+">");
-//			inputLine.add(sb);
-		}
+			break;
 		}
 		}
 	}
@@ -530,21 +364,31 @@ public class SessionOutputUtil {
 					// here we get only a prompt string like "[6@[ec2-user@ip-172-31-3-88 ~]$[C[C"
 					// this comes instead of CR !					
 				} else {
-					// here we get a string like "p': pwd" or "[C[C[C-tr[K"
+					// here we get a string like 
+					//	"p': pwd" or 
+					//  "[C[C[C-tr[K" or
+					//  "c': [3Pp': pwd"
+					//
 					int iPosCursorRight = 0;
 					int iCount          = 0;
 					while( -1 < (iPosCursorRight=sb.indexOf(CURSOR_RIGHT)) ) {
 						sb.delete(iPosCursorRight, iPosCursorRight+CURSOR_RIGHT.length());
 						iCount++;
 					}
-					iPosCursorRight = sbLast.indexOf("': ");
-					if(-1 < iPosCursorRight) {
-						int startDelete = iPosCursorRight+3+iCount;
-						int len = sbLast.length();
-						if(startDelete < len) {
-							sbLast.delete(startDelete, len);
+					//
+					// Modify last command
+					if(0 < iCount) {
+						iPosCursorRight = sbLast.indexOf("': ");
+						if(-1 < iPosCursorRight) {
+							int len = sbLast.length();
+							int startDelete = iPosCursorRight+3+iCount;
+							if(startDelete < len) {
+//								sbLast.delete(startDelete, len);
+							}
 						}
 					}
+					//
+					// check for delete character  
 					//
 					//	is on "ESC[K" behind the command
 					iPosCursorRight   = sb.indexOf(CURSOR_BACK_FROM_END);
