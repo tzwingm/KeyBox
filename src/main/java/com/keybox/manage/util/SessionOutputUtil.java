@@ -180,7 +180,9 @@ public class SessionOutputUtil {
 	static final String CURSOR_DELETE_BACK_FROM_END            = CHAR_BS+CHAR_ESC+"[K";
 	static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_BS+CHAR_ESC+"[";  // n"P"
 	static final String STRING_STRG_R                          = "reverse-i-search";
-    
+	static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[1@";		// next letter is that for insert
+	static final String STRING_STRG_R_INSERT_MASK              = "': ";		// next letter is that for insert
+	
     /**
 	 * saves sb data to database
 	 * @param con 
@@ -369,25 +371,55 @@ public class SessionOutputUtil {
 					//  "[C[C[C-tr[K" or
 					//  "c': [3Pp': pwd"
 					//
-					int iPosCursorRight = 0;
-					int iCount          = 0;
-					while( -1 < (iPosCursorRight=sb.indexOf(CURSOR_RIGHT)) ) {
-						sb.delete(iPosCursorRight, iPosCursorRight+CURSOR_RIGHT.length());
-						iCount++;
-					}
+					
+					int iPosCursorRight 	= 0;
+					int cursorRight         = getCursorRght(sb);
+					int lettersToDelete   	= getLettersToDelete(sb);
+					int cursorBackFromEnd 	= getCursorBackFromEnd(sb);
+					int bsCount             = getBs(sb);
+					Character charInsert    = getStrgRKey(sb);
 					//
 					// Modify last command
-					if(0 < iCount) {
-						iPosCursorRight = sbLast.indexOf("': ");
-						if(-1 < iPosCursorRight) {
-							int len = sbLast.length();
-							int startDelete = iPosCursorRight+3+iCount;
-							if(startDelete < len) {
-//								sbLast.delete(startDelete, len);
+					// 
+					int startPositionSb   	= sb.indexOf(STRING_STRG_R_INSERT_MASK);
+					int startPosition   	= sbLast.indexOf(STRING_STRG_R_INSERT_MASK);
+					if((-1 < startPositionSb) || (0 < charInsert)) {	// found new key Value
+						if(-1 < startPosition) {
+							if(0 == charInsert) {
+								charInsert = sb.charAt(0);
+								sb.delete(0, startPosition+3);
 							}
+							sbLast.insert(startPosition, charInsert);
+							startPosition++;
 						}
 					}
-					//
+					if(-1 < startPosition) {
+						startPosition += STRING_STRG_R_INSERT_MASK.length();	// "': "
+						startPosition += cursorRight;	// [C
+						if(0 < lettersToDelete) {
+							int endPosition = startPosition+lettersToDelete;
+							if(startPosition > sbLast.length()) {
+								startPosition = sbLast.length();
+							}
+							if(endPosition > sbLast.length()) {
+								endPosition = sbLast.length();
+							}
+							// delete character from ESC[xP 
+							sbLast.delete(startPosition, endPosition);
+							endPosition = startPosition+sb.length();
+							if(endPosition > sbLast.length()) {
+								endPosition = sbLast.length();
+							}								
+							sbLast.replace(startPosition, endPosition, sb.toString());
+						} else {
+							// delete all behind startPosition
+							sbLast.delete(startPosition, sbLast.length());
+							sbLast.append(sb);	
+						}
+					} else {
+						sbLast.append(sb);						
+					}
+					/*
 					// check for delete character  
 					//
 					//	is on "ESC[K" behind the command
@@ -397,24 +429,25 @@ public class SessionOutputUtil {
 					}
 					
 					// remove "\b"
-					sbLast.append(new StringBuilder( replaceSigns(sb.toString(), "\b", 0, 1) ));									
+					sbLast.append(new StringBuilder( replaceSigns(sb.toString(), "\b", 0, 1) ));	
+					*/								
 				}
 				
 			} else {
-				int iCount = 0;
+				int cursorRight = 0;
 				//
 				//	is on "ESC[K" before the command
 				int iPos   = sb.indexOf(CURSOR_DELETE_BACK_FROM_END);
 				if(-1 == iPos) {
 					iPos = sb.length();
 				}
-				for( ; iCount<sb.length(); iCount++) {
-					char c = sb.charAt(iCount);
+				for( ; cursorRight<sb.length(); cursorRight++) {
+					char c = sb.charAt(cursorRight);
 					if(BS == c) {
 						if(0 < sbLast.length()) {
 							sbLast.deleteCharAt(sbLast.length()-1);
-							if(iCount == iPos) {
-								iCount += CURSOR_DELETE_BACK_FROM_END.length()-1;
+							if(cursorRight == iPos) {
+								cursorRight += CURSOR_DELETE_BACK_FROM_END.length()-1;
 							}
 						} else
 						{
@@ -424,32 +457,11 @@ public class SessionOutputUtil {
 						break;
 					}
 				}
-				sb.replace(0, iCount, "");
+				sb.replace(0, cursorRight, "");
+				
 				//
 				// Now search for "ESC[xP"
-				if(3 < sb.length()) {
-					boolean bFoundEsc = false;
-					int iPosEsc = sb.indexOf(CHAR_ESC+"[");
-					String number = "";
-					if(-1 != iPosEsc) {
-						for( int i = iPosEsc+2; i<sb.length(); i++) {
-							Character c = sb.charAt(i);
-							if(!Character.isDigit(c)) {
-								if(c == 'P') {
-									bFoundEsc = true;
-									break;
-								}
-							} else {
-								number += c;
-							}
-						}
-						if(bFoundEsc) {
-							long lPosition = Integer.valueOf(number);
-							// Delete characters from input string
-							sb.delete(iPosEsc, iPosEsc+3+number.length());
-						}
-					}
-				}
+				int lettersToDelete = getLettersToDelete(sb);
 				//
 				//	is on "ESC[K" behind the command
 				iPos   = sb.indexOf(CURSOR_BACK_FROM_END);
@@ -472,6 +484,106 @@ public class SessionOutputUtil {
 	}
 
 	/**
+	 * Checks for something like "p': pwd[1@x"
+	 * While StrgR is active comes this or  "x': .."
+	 * 
+	 * @param sb	- input from Terminal
+	 * @return	Character from Input
+	 */
+	private static Character getStrgRKey(StringBuilder sb) {
+		Character cKey = new Character((char) 0);
+		//
+		//	is on "ESC[K" behind the command
+		int iPos   = sb.indexOf(STRING_STRG_R_INSERT_KEY);
+		if(-1 < iPos) {
+			sb.delete(iPos, iPos+STRING_STRG_R_INSERT_KEY.length());
+			cKey  = sb.charAt(iPos);
+			sb.delete(iPos, iPos+1);
+		}
+		return cKey;
+	}
+
+	/**
+	 * Check for BS and delete them in sb 
+	 * @param sb 	- input from Terminal
+	 * @return count of BS
+	 */
+	private static int getBs(StringBuilder sb) {
+		int iCount = 0;
+		int iPosBs = 0;
+		while( -1 < (iPosBs=sb.indexOf(CHAR_BS)) ) {
+			sb.delete(iPosBs, iPosBs+CHAR_BS.length());
+			iCount++;
+		}
+		return iCount;
+	}
+
+	/**
+	 * Checks for "[K" and delete it in sb
+	 * @param sb 	- input from Terminal
+	 * @return
+	 */
+	private static int getCursorBackFromEnd(StringBuilder sb) {
+		//
+		//	is on "ESC[K" behind the command
+		int iPos   = sb.indexOf(CURSOR_BACK_FROM_END);
+		if(-1 < iPos) {
+			sb.delete(iPos, iPos+CURSOR_BACK_FROM_END.length());
+		}
+		return iPos;
+	}
+
+	/**
+	 * Check for "ESC[xP", delete it in sb
+	 * @param 	- input from Terminal
+	 * @return	x 
+	 */
+	private static int getLettersToDelete(StringBuilder sb) {
+		String number = "";
+		int lettersToDelete = 0;
+		//
+		// Now search for "ESC[xP"
+		if(3 < sb.length()) {
+			boolean bFoundEsc = false;
+			int iPosEsc = sb.indexOf(CHAR_ESC+"[");
+			if(-1 != iPosEsc) {
+				for( int i = iPosEsc+2; i<sb.length(); i++) {
+					Character c = sb.charAt(i);
+					if(!Character.isDigit(c)) {
+						if(c == 'P') {
+							bFoundEsc = true;
+							break;
+						}
+					} else {
+						number += c;
+					}
+				}
+				if(bFoundEsc) {
+					// Delete characters from input string
+					sb.delete(iPosEsc, iPosEsc+3+number.length());
+					lettersToDelete = Integer.valueOf(number);
+				}
+			}
+		}
+		return lettersToDelete;
+	}
+
+	/**
+	 * Checks for "[C", count them and delete it in sb
+	 * @param sb	- input from Terminal
+	 * @return	number of found occurrence
+	 */
+	private static int getCursorRght(StringBuilder sb) {
+		int iCount = 0;
+		int iPosCursorRight = 0;
+		while( -1 < (iPosCursorRight=sb.indexOf(CURSOR_RIGHT)) ) {
+			sb.delete(iPosCursorRight, iPosCursorRight+CURSOR_RIGHT.length());
+			iCount++;
+		}
+		return iCount;
+	}
+
+	/**
 	 * Removes characters from String for each "\b" or others
 	 * is used for CURSOR UP/DOWN for commands
 	 * 
@@ -483,7 +595,7 @@ public class SessionOutputUtil {
 		String s = replaceSigns(outCommand, "\b", 0, 1);
 		// remove trailing like "ESC[K"
 		s = replaceSigns(s, Character.toString((char)27)+"[K", 0, 3);
-		s = replaceSigns(s, Character.toString((char)27)+"[?P", 0, 3);
+//		s = replaceSigns(s, Character.toString((char)27)+"[?P", 0, 3);
 		return s;
 	}
 
