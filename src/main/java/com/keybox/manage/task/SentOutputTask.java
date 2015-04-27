@@ -48,6 +48,8 @@ public class SentOutputTask implements Runnable {
         inputLine.add(new StringBuilder());		// 1	-	BEL ( TAB ), strgR, when active
         inputLine.add(new StringBuilder());		// 2	-	Last Login message from start
         inputLine.add(new StringBuilder());		// 3	-	prompt
+        inputLine.add(new StringBuilder());		// 4	-	Coded position of the cursor in LastCommand
+        
         
         while (session.isOpen()) {
             List<SessionOutput> outputList = SessionOutputUtil.getOutput(con, sessionId, inputLine);
