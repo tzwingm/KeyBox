@@ -38,11 +38,14 @@ public class SessionOutputAudit {
     private static final String STRING_DOLLAR_BLANC = "$ ";
 
     private static boolean activeBell  = false;
+    private static boolean checkBelCommand = false;
+    private static StringBuilder  belCommandBehindDollar = new StringBuilder();
     private static boolean activeStrgR = false;
     private static StringBuilder outCommand   		= new StringBuilder();
     private static StringBuilder outputFromCommand  = new StringBuilder();
 
     private static boolean activePrompt = false;
+
     private static int iPosUser   = 0;
     private static int iPosDollar = 0;
     /**
@@ -86,63 +89,9 @@ public class SessionOutputAudit {
 			//
 			// check for prompt in key
 
-			String outLine = sb.toString();
-//			boolean prompt = (outLine.contains(ec2_user) && outLine.contains("$ "));
-			boolean prompt = checkPrompt(sb);
-			if(prompt) {
-				outLine    = "";
-				int iCount = 0;
-				// System.getProperty("line.separator")
+			sessionOutput.setOutput(outputFromCommand.toString());
+			SessionAuditDB.insertTerminalLog(con, sessionOutput);
 
-				for(StringBuilder sbLine: arrSbLines) {
-					String line = sbLine.toString();
-					StringBuilder sbCommand 	 = new StringBuilder();
-					StringBuilder modfiedCommand = new StringBuilder();
-					if( checkPrompt(line, iCount, modfiedCommand, sbCommand)) {
-						if(0 < sbCommand.length()) {
-							// there is something behind "$ "
-						} else {
-							checkBelCommand = false;	// end of TAB / BEL
-						}
-
-					}
-					//						System.out.println("Content = " + line);
-					//						System.out.println("Length = " + line.length());
-					/*
-					if(-1 < iPosEc2_User) {
-						int iPosDollar = line.indexOf("$ ");
-						if(-1 < iPosDollar) {
-							// Line should now contain only the prompt.
-							if(checkBelCommand) {
-								if(iPosDollar+3 < line.length()) {
-									// there is something behind "$ "
-								} else {
-									checkBelCommand = false;	// end of TAB / BEL
-								}
-							}
-							if( -1 != iPosEc2_User) {
-								line = line.substring(iPosEc2_User);
-							}
-						} else if((0 == iCount) && line.contains("$") && STRING_STRG_R.contains(inputLine.get(1).toString())) {
-							line = "";
-						}
-					} else {
-					} */
-					outLine += modfiedCommand.toString();
-					iCount++;
-				}
-				sessionOutput.setOutput(outLine);
-				SessionAuditDB.insertTerminalLog(con, sessionOutput);
-/*				if(!activeBell) {
-					System.out.println("Clearing inputs for no ctrlR !");
-					if(0 < inputLine.size()) {
-						inputLine.set(0, new StringBuilder());
-					}
-				} */
-			} else {
-//				System.out.println("!Promt - Adding input <"+sb.toString()+">");
-//				inputLine.add(sb);
-			}
 		}
 		case KEYSB_STRGC:
 		{
@@ -299,8 +248,27 @@ public class SessionOutputAudit {
 	 * @return				- one output string like sb, but modified
 	 */
 	private static StringBuilder checkOutFromCommand(List<StringBuilder> arrSbLines) {
+		String	outLine    = "";
+		int iCount = 0;
+		// System.getProperty("line.separator")
 
-		return null;
+		for(StringBuilder sbLine: arrSbLines) {
+			String line = sbLine.toString();
+			StringBuilder sbCommand 	 = new StringBuilder();
+			StringBuilder modfiedCommand = new StringBuilder();
+			if( checkPrompt(line, iCount, modfiedCommand, sbCommand)) {
+				if(0 < sbCommand.length()) {
+					belCommandBehindDollar = sbCommand;
+				} else {
+					checkBelCommand = false;	// end of TAB / BEL
+				}
+
+			}
+			outLine += modfiedCommand.toString();
+			iCount++;
+		}
+
+		return new StringBuilder(outLine);
 	}
 
 	/**
@@ -310,7 +278,7 @@ public class SessionOutputAudit {
 	 * @param sbCommand	- if there is an command at the end of the prompt, this is filled within the content
 	 * @return
 	 */
-	private boolean checkPrompt(String line, long iCount, StringBuilder modifiedLine, StringBuilder sbCommand) {
+	private static boolean checkPrompt(String line, long iCount, StringBuilder modifiedLine, StringBuilder sbCommand) {
 		StringBuilder sbLine = new StringBuilder(line);
 		boolean       bBack = checkPrompt(sbLine);
 		if(bBack) {
