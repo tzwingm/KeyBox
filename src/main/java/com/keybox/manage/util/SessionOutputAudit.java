@@ -156,7 +156,6 @@ public class SessionOutputAudit {
 		}
 		case 2:
 		{
-			break;
 		}
 		default:
 		{
@@ -201,12 +200,17 @@ public class SessionOutputAudit {
 				if(0 == sb.indexOf("Last login:")) {			// first message on the terminal
 					keySb = KEYSB_INIT_TERM;
 					inputLine.set(2, sb);
+					outputFromCommand = checkOutFromCommand(arrSbLines);
 					isCommand = false;
 				} else if(activeBell) {
 					outputFromCommand = checkOutFromCommand(arrSbLines);
 					keySb = KEYSB_CR;
 				} else if( activeStrgR) {
-
+					outputFromCommand = checkOutFromCommand(arrSbLines);
+					keySb = KEYSB_CR;
+				} else if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
+					outputFromCommand = checkOutFromCommand(arrSbLines);
+					keySb  = KEYSB_CR;
 				}
 				break;
 			}
@@ -216,9 +220,7 @@ public class SessionOutputAudit {
 		}
 		if( 1 == sb.length()) {
 		} else if( 2 <= sb.length()) {
-			if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
-				keySb  = KEYSB_CR;
-			} else if( ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'))) { // StrgC
+			if( ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'))) { // StrgC
 				keySb  = KEYSB_STRGC;
 			}
 			if(!isCommand && checkPrompt(sb) && (KEYSB_INIT_TERM != keySb)) {
