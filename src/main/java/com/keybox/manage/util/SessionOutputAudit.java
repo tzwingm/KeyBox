@@ -32,7 +32,7 @@ public class SessionOutputAudit {
 	private static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_ESC+"[";  // n"P"
 	private static final String STRING_STRG_R                          = "reverse-i-search";
     private static final String STRING_STRG_R_PROMT_PART			   = CHAR_BS+CHAR_BS+CHAR_BS+CHAR_ESC+"["; // 23@ .. "': "
-	private static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[1@";		// next letter is that for insert
+	private static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[";	// n@	 next letter is that for insert
 	private static final String STRING_STRG_R_INSERT_MASK              = "': ";		// next letter is that for insert
     private static final String STRING_EC2_USER 					   = "[ec2-user";
     private static final String STRING_DOLLAR_BLANC 				   = "$ ";
@@ -137,7 +137,7 @@ public class SessionOutputAudit {
 		System.out.println("changeInput - getting <"+input+">");
 		int     keySb  = KEYSB_UNKNOWN;
 		boolean isCommand = true;
-
+		SessionOutputCommand command = new SessionOutputCommand();
 		//
 		// First check length of input
 		switch (sb.length()) {
@@ -151,13 +151,14 @@ public class SessionOutputAudit {
 				keySb = KEYSB_BEL;
 				activeBell = true;
 			} else {
+				command.adChar(inputLine, sb);
 				buildCommandLine(inputLine, sb);	// key from input
 			}
 			break;
 		}
 		default:	// All other
 		{
-			activePrompt = checkPrompt(sb);
+			activePrompt = false;
 			//
 			// check for an output or command
 			String[] lines = sb.toString().split("\n");		// separate to lines
@@ -166,6 +167,7 @@ public class SessionOutputAudit {
 					line += "\n";
 				}
 				arrSbLines.add(new StringBuilder(line));
+				activePrompt |= checkPrompt(new StringBuilder(line));
 			}
 			switch ( arrSbLines.size() ) {
 			case 0:
@@ -182,11 +184,15 @@ public class SessionOutputAudit {
 					if(0 == inputLine.get(3).length()) {
 						inputLine.set(3, sb);	// set first prompt from start
 						keySb = KEYSB_INIT_TERM_P;
+					} else {
+						inputLine.set(0, belCommandBehindDollar);
+						keySb = KEYSB_CR;
 					}
 				} else if(0 < input.length())	{ // One character
 					//
 					// At this point we get the optimized Inputs
 					//
+					command.evaluateInput(inputLine, sb);
 					buildCommandLine(inputLine, sb);
 				}
 
@@ -206,6 +212,7 @@ public class SessionOutputAudit {
 					keySb = KEYSB_CR;
 				} else if( activeStrgR) {
 					outputFromCommand = checkOutFromCommand(arrSbLines);
+					activeStrgR = false;
 					keySb = KEYSB_CR;
 				} else if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
 					outputFromCommand = checkOutFromCommand(arrSbLines);
@@ -318,11 +325,17 @@ public class SessionOutputAudit {
 	 */
 	private static boolean checkPrompt(StringBuilder sb) {
 		boolean bRet = false;
-		iPosUser   = sb.indexOf(STRING_EC2_USER);
-		if(-1 < iPosUser ) {
-			iPosDollar = sb.indexOf("$ ");
-			if(.1 < iPosDollar) {
+		if(2 <= sb.length()) {
+			if(-1 < sb.indexOf(CHAR_ESC+"]")) {
 				bRet = true;
+			}
+		} else {	// TODO Obsolete ?
+			iPosUser   = sb.indexOf(STRING_EC2_USER);
+			if(-1 < iPosUser ) {
+				iPosDollar = sb.indexOf("$ ", iPosUser);
+				if(.1 < iPosDollar) {
+					bRet = true;
+				}
 			}
 		}
 		return bRet;
@@ -366,6 +379,7 @@ public class SessionOutputAudit {
 	private void buildCommandLine(List<StringBuilder> inputLine, StringBuilder sb) {
 		//
 		// find command for the result from the host
+		getBel(sb);
 		String input       = sb.toString();
 		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
 		if(0 < inputLine.size()) {
@@ -375,7 +389,8 @@ public class SessionOutputAudit {
 			}
 			int lettersToDelete 			= getDeleteCharactersBackFromPos(sb);
 			int cursorCountOfBSbeforeText 	= getCountOfBSbeforeText(sb);
-			int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb);	// ClenUp ESC{K
+			int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb, sbLast);	// ClenUp ESC{K
+			cursorDeleteFromPositioToEnd = 0;
 			System.out.println("buildCommandLine - buildCommandLine sbLast start <"+sbLast.toString()+">");
 			if(1 == input.length()) {
 				if(CHAR_BS.contains(sb)) {
@@ -389,8 +404,8 @@ public class SessionOutputAudit {
 				System.out.println("buildCommandLine - TAB / BEL is active !");
 			} else if(activeStrgR) {
 				checkStrgR(sb, sbLast, iCursurRight, lettersToDelete, cursorDeleteFromPositioToEnd);
-				activeStrgR = false;
-			} else if( checkInsertKey(sb, sbLast, lettersToDelete)){
+//				activeStrgR = false;
+			} else if( (-1 == cursorDeleteFromPositioToEnd) && checkInsertKey(sb, sbLast, lettersToDelete)){
 
 			} else if (checkOverWriteCommand(sb, sbLast, cursorCountOfBSbeforeText, lettersToDelete, cursorDeleteFromPositioToEnd)) {
 
@@ -403,6 +418,17 @@ public class SessionOutputAudit {
 		}
 		System.out.println("buildCommandLine - buildCommandLine sbLast, sb end <"+sbLast.toString()+"-- , --"+sb.toString()+">");
 		return;
+	}
+
+	private boolean getBel(StringBuilder sb) {
+		if(0 < sb.length()) {
+			int iPos;
+			if( BEL ==sb.charAt(0)) {
+				activeBell = true;
+				sb.delete(0, 1);
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -438,7 +464,11 @@ public class SessionOutputAudit {
 	private boolean checkOverWriteCommand(StringBuilder sb,	StringBuilder sbLast, int cursorCountOfBSbeforeText, int lettersToDelete, int cursorDeleteFromPositioToEnd) {
 		boolean bBack 		= false;
 		int cursorPosition 	= sbLast.length()-cursorCountOfBSbeforeText;
-		int cursorDelBack 	= 0;
+
+		if(0 > cursorPosition) {
+			cursorPosition = 0;
+		}
+		Character charInsert    = getStrgRKey(sb);
 		if( (0<cursorCountOfBSbeforeText) || (0<lettersToDelete || (-1 < cursorDeleteFromPositioToEnd))) {
 			int iEnd = 0;
 			//
@@ -447,77 +477,24 @@ public class SessionOutputAudit {
 			// than skip number of <lettersToDelete>
 			// than replace sbLast with the input string <sb>
 			getBs(sb);	// clean all BS in input
-			if(0 == cursorPosition) {
-				if(-1 < cursorDeleteFromPositioToEnd) {
-					sbLast.delete(cursorPosition, sbLast.length());
-				} else if(0<lettersToDelete) {
-					iEnd = lettersToDelete+sb.length();
-					sbLast.delete(cursorPosition, iEnd);
-				} else if(sbLast.length() <= sb.length()) {
-					sbLast.delete(0, sbLast.length());
+			if(0<lettersToDelete) {
+				iEnd = cursorPosition+lettersToDelete;	// Go back from position
+				if(iEnd > sbLast.length()) {
+					iEnd = sbLast.length();
 				}
-				sbLast.append(sb);
-			} else if(0 < cursorPosition) {
-				if(0 < lettersToDelete) {
-					int iBeg = cursorPosition-lettersToDelete;	// Go back from position
-					if(0 > iBeg) {
-						iBeg = 0;
-					}
-					sbLast.delete(iBeg, cursorPosition);
-				}
-				iEnd = cursorPosition+lettersToDelete;
-				if(iEnd < sbLast.length()) {
-					sbLast.delete(cursorPosition, iEnd);
-				}
-				iEnd = cursorPosition+sb.length();
-				sbLast.replace(cursorPosition, iEnd, sb.toString());
-				bBack = true;
+				sbLast.delete(cursorPosition, iEnd);
 			}
+			if(-1 < cursorDeleteFromPositioToEnd) {
+				sbLast.delete(cursorPosition, sbLast.length());
+			}
+			iEnd = cursorPosition+sb.length();
+			sbLast.replace(cursorPosition, iEnd, sb.toString());
+			bBack = true;
+
 		} else {
 			sbLast.append(sb);
 		}
 
-		if(false) {
-		/*
-		// First delete the BSESC[K letters
-		for( ;  cursorBackFromEnd > 0; cursorBackFromEnd--) {
-			sbLast.deleteCharAt(sbLast.length()-1);
-		} */
-		//
-		//	is on "ESC[K" before the command
-		System.out.println("checkOverWriteCommand - cursorBackFromEnd = <"+Integer.valueOf(cursorDeleteFromPositioToEnd).toString()+">");
-		for( ; cursorDelBack<sb.length(); cursorDelBack++) {
-			char c = sb.charAt(cursorDelBack);
-			if(BS == c) {
-				if(0 < sbLast.length()) {
-					sbLast.deleteCharAt(sbLast.length()-1);
-					bBack = true;
-				} else
-				{
-					break;
-				}
-			} else {
-				break;
-			}
-		}
-		sb.replace(0, cursorDelBack, "");
-
-		//
-		// Now do something for "ESC[xP" ( x is lettersToDelete
-		if( sbLast.length() < lettersToDelete) {
-			lettersToDelete = sbLast.length();
-		}
-		sbLast.replace(0, lettersToDelete, "");
-		//
-		//	is on "ESC[K" behind the command
-		/*
-		iPos   = sb.indexOf(CURSOR_BACK_FROM_END);
-		if(-1 < iPos) {
-			sb.delete(iPos, iPos+CURSOR_BACK_FROM_END.length());
-		}
-		*/
-		sbLast.append(sb);
-		}
 		return bBack;
 	}
 
@@ -549,18 +526,9 @@ public class SessionOutputAudit {
 			//  "[C[C[C-tr[K" or
 			//  "c': [3Pp': pwd"
 			//	"[23@l': ll /etc/init.d/single"
-			// Check for prompt before the command
-			int iPosPrompt 			= sb.indexOf(STRING_STRG_R_PROMT_PART);
-			if(-1 < iPosPrompt) {
-				int iPosK = sb.indexOf("@");
-				if(-1 < iPosK) {
-					sb.delete(0, iPosK+1);
-				}
-			}
 			int iPosCursorRight 	= 0;
-//			int cursorRight         = getCursorRght(sb);
-//			int cursorBackFromEnd 	= getCursorBackFromEnd(sb);
 			int bsCount             = getBs(sb);
+			// Check for prompt before the command
 			Character charInsert    = getStrgRKey(sb);
 			//
 			// Modify last command
@@ -682,7 +650,7 @@ public class SessionOutputAudit {
 					iPossb = 0; // for save in cursor Position
 				}
 			} else {
-				bBack = true;	// Nothing to insert, so it's alo ok
+				bBack = true;	// Nothing to insert, so it's also ok
 			}
 		}
 		if(bBack) {
@@ -701,12 +669,15 @@ public class SessionOutputAudit {
 	private static Character getStrgRKey(StringBuilder sb) {
 		Character cKey = new Character((char) 0);
 		//
-		//	is on "ESC[K" behind the command
+		//	is on "ESC[n@" behind the command
 		int iPos   = sb.indexOf(STRING_STRG_R_INSERT_KEY);
 		if(-1 < iPos) {
-			sb.delete(iPos, iPos+STRING_STRG_R_INSERT_KEY.length());
-			cKey  = sb.charAt(iPos);
-			sb.delete(iPos, iPos+1);
+			int iPosKl = sb.indexOf("@", iPos);
+			if(-1 < iPosKl) {
+				String s = sb.substring(iPos+STRING_STRG_R_INSERT_KEY.length(), iPosKl);
+				cKey = (char) Integer.valueOf(s).intValue();
+				sb.delete(iPos, iPosKl+1);
+			}
 		}
 		return cKey;
 	}
@@ -728,15 +699,20 @@ public class SessionOutputAudit {
 
 	/**
 	 * Checks for "[K" and delete it in sb
+	 *
 	 * @param sb 	- input from Terminal
+	 * @param sbLast- last command
 	 * @return
 	 */
-	private static int getCursorDeleteFromPositionToEnd(StringBuilder sb) {
+	private static int getCursorDeleteFromPositionToEnd(StringBuilder sb, StringBuilder sbLast) {
 		//
-		//	is on "ESC[K" behind the command
+		//	count number of "ESC[K"
 		int iPos   = sb.indexOf(CURSOR_DELETE_FROM_POSITION_TO_END);
-		if(-1 < iPos) {
+		while(-1 <(iPos = sb.indexOf(CURSOR_DELETE_FROM_POSITION_TO_END))) {
 			sb.delete(iPos, iPos+CURSOR_DELETE_FROM_POSITION_TO_END.length());
+			if(0 < sbLast.length()) {
+				sbLast.deleteCharAt(sbLast.length()-1);
+			}
 		}
 		return iPos;
 	}
