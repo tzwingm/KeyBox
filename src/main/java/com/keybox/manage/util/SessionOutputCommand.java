@@ -17,10 +17,11 @@ public class SessionOutputCommand {
 	private static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_ESC+"[";  // n"P"
 	private static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[";	// n@	 next letter is that for insert
 	private static final String STRING_STRG_R_INSERT_MASK              = "': ";		// next letter is that for insert
+	private static final String STRING_NUMBER_DELIMITER                = "P@";		// next letter is that for insert
 
     private static boolean activeBell  = false;
     private static boolean activeStrgR = false;
-    private long cursorPosition = 0;
+    private int cursorPosition = 0;
 
 	/**
 	 * Adds one character to
@@ -46,45 +47,171 @@ public class SessionOutputCommand {
 	 * get the inputline
 	 * @param inputLine
 	 * @param sb
+	 * @param activeStrgR2
+	 * @param activeBell2
+	private static final String CURSOR_RIGHT 				           = Character.toString((char)ESC)+"[C";
+	private static final String CURSOR_DELETE_FROM_POSITION_TO_END     = CHAR_ESC+"[K";
+	private static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_ESC+"[";  // n"P"
+	private static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[";	// n@	 next letter is that for insert
 	 */
-	public void evaluateInput(StringBuilder sb) {
+	public void evaluateInput(StringBuilder sb, boolean activeBell2, boolean activeStrgR2) {
 		//
 		// find command for the result from the host
-		System.out.println("buildCommandLine - sbLast start <"+sbLast.toString()+">");
-		getBel(sb);
-		String input       = sb.toString();
-		//		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
-		int iCursurRight 	= getCursorRght(sb);
-		if( 0 < iCursurRight){
-			setCursorPosition(sbLast, cursorPosition+iCursurRight);
+		System.out.println("evaluateInput-start activeBell, activeStrgR, sbLast <"+Boolean.valueOf(activeBell2).toString()+Boolean.valueOf(activeBell2).toString()+sbLast.toString()+">");
+		int cp 	= getCursorPosition(sb);
+		if(-1 < cp) {	// BS given, take new computed position
+			cursorPosition = cp;
+		} else if(cursorPosition > sbLast.length()) {
+			cursorPosition = sbLast.length();	// set defined to
 		}
-		int cursorCountOfBSbeforeText 	= getCountOfBSbeforeText(sb);
-		int lettersToDelete 			= getDeleteCharactersBackFromPos(sb);
-		int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb, sbLast);	// ClenUp ESC{K
-		if(1 == input.length()) {
-			if(CHAR_BS.contains(sb)) {
-				cursorPosition--;
-			} else {
-				sbLast.append(sb);
-				cursorPosition++;
+		//
+		// now search for ESC sequences
+		while(0 < sb.length()) {
+			int iEnd = 0;
+			switch(sb.charAt(0)) {
+			case ESC:
+			{
+				if((2 < sb.length()) && ('[' == sb.charAt(1))) {
+					sb.delete(0, 2);	// delete ESC[
+					switch(sb.charAt(0)) {
+					case 'C':	// cursor right
+					{
+						sb.delete(0, 1);
+						cursorPosition++;
+						break;
+					}
+					case 'K':	// delete from cursor to end
+					{
+						sbLast.delete((int) cursorPosition, sbLast.length());
+						sb.delete(0, 1);
+						break;
+					}
+					default:
+					{
+						StringBuilder delimiterFound = new StringBuilder();
+						//
+						// look for
+						// CHAR_ESC+"[";  // n"P"
+						// CHAR_ESC+"[";  // n@	 next letter is that for insert
+						int number = getNumberFromUntil(sb, new StringBuilder(STRING_NUMBER_DELIMITER), delimiterFound);
+						if(-1 < number) {
+							switch(delimiterFound.charAt(0)) {
+							case 'P':
+								iEnd = cursorPosition+number;
+								sbLast.delete(cursorPosition, iEnd);
+								break;
+							case '@':
+								for(int j=0; j < number; j++) {
+									sbLast.insert(cursorPosition, 0);
+								}
+								break;
+							default:
+								break;
+							}
+						}
+						break;
+					}
+					}
+				}
+				break;
 			}
-			setCursorPosition(sbLast, cursorPosition);
-		} else if(activeBell) {
-			System.out.println("buildCommandLine - TAB / BEL is active !");
-		} else if(activeStrgR) {
-			checkStrgR(sb, iCursurRight, lettersToDelete, cursorDeleteFromPositioToEnd);
-			//				activeStrgR = false;
-		} else if( (-1 == cursorDeleteFromPositioToEnd) && checkInsertKey(sb, sbLast, lettersToDelete)){
-
-		} else if (checkOverWriteCommand(sb, sbLast, cursorCountOfBSbeforeText, lettersToDelete, cursorDeleteFromPositioToEnd)) {
-
+			default:
+			{
+				String s = getText(sb);
+				iEnd = cursorPosition+s.length();
+				sbLast.replace(cursorPosition, iEnd, s);
+				cursorPosition = iEnd;
+				break;
+			}
+			}
 		}
-		//			this.outCommand = sbLast;
-		//			inputLine.set(0, sbLast);
+		if(false) {
+			String input       	= sb.toString();
+			//		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
+			activeBell 			= activeBell2;
+			activeStrgR 		= activeStrgR2;
+			int iCursurRight 	= getCursorRght(sb);
+			if( 0 < iCursurRight){
+				setCursorPosition(sbLast, cursorPosition+iCursurRight);
+			}
+			int cursorCountOfBSbeforeText 	= getCountOfBSbeforeText(sb);
+			int lettersToDelete 			= getDeleteCharactersBackFromPos(sb);
+			int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb, sbLast);	// ClenUp ESC{K
+			if(1 == input.length()) {
+				if(CHAR_BS.contains(sb)) {
+					cursorPosition--;
+				} else {
+					sbLast.append(sb);
+					cursorPosition++;
+				}
+				setCursorPosition(sbLast, cursorPosition);
+			} else if(activeBell) {
+				System.out.println("evaluateInput - TAB / BEL is active !");
+			} else if(activeStrgR) {
+				checkStrgR(sb, iCursurRight, lettersToDelete, cursorDeleteFromPositioToEnd);
+				//				activeStrgR = false;
+			} else if( (-1 == cursorDeleteFromPositioToEnd) && checkInsertKey(sb, sbLast, lettersToDelete)){
 
-		System.out.println("buildCommandLine - sbLast, sb end <"+sbLast.toString()+"-- , --"+sb.toString()+">");
+			} else if (checkOverWriteCommand(sb, sbLast, cursorCountOfBSbeforeText, lettersToDelete, cursorDeleteFromPositioToEnd)) {
+
+			}
+			//			this.outCommand = sbLast;
+			//			inputLine.set(0, sbLast);
+		}
+		System.out.println("evaluateInput - end sbLast, sb <"+sbLast.toString()+"-- , --"+sb.toString()+">");
 		return;
 	}
+
+	/**
+	 * String should start with an letter and end with BS or ESC
+	 *
+	 * @param sb		- next data from input
+	 * @return
+	 */
+	private String getText(StringBuilder sb) {
+		String s = "";
+		boolean   bEndswithSequence = false;
+		for(int i=0; i < sb.length(); i++) {
+			switch(sb.charAt(i)) {
+			case BS:
+			case ESC:
+				bEndswithSequence = true;
+				break;
+			default:
+			{
+				s += sb.charAt(i);
+				break;
+			}
+			}
+			// loop ?
+			if(bEndswithSequence) {
+				break;	// end for loop
+			}
+		}
+		if( 0 < s.length()) {
+			sb.delete(0, s.length());
+		}
+		return s;
+	}
+
+	/**
+	 * Gets the Position in sbLast in relation to the count of BS from start in sb
+	 *
+	 * @param sb		- next data from input
+	 * @return -1, for no BS in start of sb
+	 */
+	private int getCursorPosition(StringBuilder sb) {
+		int cursorPosition = -1;
+		if( (0 < sb.length()) && (BS == sb.charAt(0)) ) {
+			int countOfBSbeforeText = getCountOfBSbeforeText(sb);
+			if(-1 < countOfBSbeforeText) {
+				sb.delete(0, countOfBSbeforeText);
+				cursorPosition = sbLast.length()-countOfBSbeforeText;
+			}
+		}
+		return cursorPosition;
+	}
+
 	/**
 	 * checks for input the Strg+R command
 	 *
@@ -278,16 +405,6 @@ public class SessionOutputCommand {
 		return bBack;
 	}
 
-	private boolean getBel(StringBuilder sb) {
-		if(0 < sb.length()) {
-			if( BEL ==sb.charAt(0)) {
-				activeBell = true;
-				sb.delete(0, 1);
-			}
-		}
-		return activeBell;
-	}
-
 	/**
 	 * Checks for "[C", count them and delete it in sb
 	 *
@@ -309,7 +426,7 @@ public class SessionOutputCommand {
 	 * @param sbLast	- actual, before next, buffer for command
 	 * @param cursorPosition
 	 */
-	private void setCursorPosition(StringBuilder sbLast, long cursorPosition) {
+	private void setCursorPosition(StringBuilder sbLast, int cursorPosition) {
 		if(cursorPosition > sbLast.length()) {
 			this.cursorPosition = sbLast.length();
 		} else if(0 > cursorPosition) {
@@ -340,9 +457,51 @@ public class SessionOutputCommand {
 	/**
 	 * Starts at index i and searches for digit value
 	 *
-	 * @param i	-	Position in sb
-	 * @param j
-	 * @param sb	- input from Terminal
+	 * @param iPosEsc	-	Position in sb
+	 * @param len		-   offset from start
+	 * @param sb		- 	input from Terminal
+	 * @return String with digits
+	 */
+
+	/**
+	 * get a number starting from sb.charAt(0) until a given delimiter
+	 * @param sb				- input from Terminal
+	 * @param delimiter			- possible letters behind the number etc : P, @
+	 * @param delimiterFound	- as output the found delimiter
+	 * @return -1 for nothing found, otherwise the number
+	 */
+	private static int getNumberFromUntil(StringBuilder sb, StringBuilder delimiter, StringBuilder delimiterFound ) {
+		int lettersToDelete = -1;
+		String number = "";
+		Character 	c = ' ';
+		boolean bFoundEsc = false;
+		for( int i=0 ; i<sb.length(); i++) {
+			c = sb.charAt(i);
+			if(!Character.isDigit(c)) {
+				if(-1 < delimiter.indexOf(c.toString())) {
+					bFoundEsc = true;
+					break;
+				}
+			} else {
+				number += c;
+			}
+		}
+		if(bFoundEsc) {
+			// Delete characters from input string
+			int iEnd = number.length()+1;
+			delimiterFound.insert(0, c);
+			sb.delete(0, iEnd);
+			lettersToDelete = Integer.valueOf(number);
+		}
+		return lettersToDelete;
+	}
+
+	/**
+	 * Starts at index i and searches for digit value
+	 *
+	 * @param iPosEsc	-	Position in sb
+	 * @param len		-   offset from start
+	 * @param sb		- 	input from Terminal
 	 * @return String with digits
 	 */
 	private static int getNumberFromUntilP(int iPosEsc, int len, StringBuilder sb) {

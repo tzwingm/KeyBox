@@ -4,6 +4,8 @@ import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.logging.impl.AvalonLogger;
+
 import com.keybox.manage.db.SessionAuditDB;
 import com.keybox.manage.model.SessionOutput;
 
@@ -203,7 +205,8 @@ public class SessionOutputAudit {
 					//
 					// At this point we get the optimized Inputs
 					//
-					command.evaluateInput(sb);
+					getBel(sb);
+					command.evaluateInput(sb, activeBell, activeStrgR);
 //					buildCommandLine(inputLine, sb);
 				}
 
@@ -264,6 +267,22 @@ public class SessionOutputAudit {
 		}
 
 		return keySb;
+	}
+
+	/**
+	 * checks for on BEL in sb
+	 *
+	 * @param sb
+	 * @return
+	 */
+	private boolean getBel(StringBuilder sb) {
+		if(0 < sb.length()) {
+			if( BEL ==sb.charAt(0)) {
+				activeBell = true;
+				sb.delete(0, 1);
+			}
+		}
+		return activeBell;
 	}
 
 	/**
