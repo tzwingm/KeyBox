@@ -34,9 +34,9 @@ public class SessionOutputUtil {
 
     private static Map<Long, UserSessionsOutput> userSessionsOutputMap = new ConcurrentHashMap<Long, UserSessionsOutput>();
     public static boolean enableAudit = "true".equals(AppConfig.getProperty("enableAudit"));
-    private static SessionOutputAudit audit = new SessionOutputAudit();
+//    private static SessionOutputAudit audit = new SessionOutputAudit();
 
-	
+
 
 
     /**
@@ -111,10 +111,11 @@ public class SessionOutputUtil {
      * returns list of output lines
      *
      * @param sessionId session id object
-     * @param inputLine 
+     * @param inputLine
+     * @param audit2
      * @return session output list
      */
-    public static List<SessionOutput> getOutput(Connection con, Long sessionId, List<StringBuilder> inputLine) {
+    public static List<SessionOutput> getOutput(Connection con, Long sessionId, List<StringBuilder> inputLine, SessionOutputAudit audit) {
         List<SessionOutput> outputList = new ArrayList<SessionOutput>();
 
 
@@ -140,7 +141,7 @@ public class SessionOutputUtil {
 
                         if (StringUtils.isNotEmpty(sessionOutput.getOutput())) {
                             outputList.add(sessionOutput);
-                                                      
+
                             if (enableAudit) {
                             	audit.setAudit(con, sb, sessionOutput, inputLine);
                             }

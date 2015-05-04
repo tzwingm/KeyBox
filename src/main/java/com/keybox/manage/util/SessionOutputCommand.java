@@ -4,15 +4,7 @@ import java.util.List;
 
 public class SessionOutputCommand {
 
-    private static final int KEYSB_CR          = 0;		// CRLF is given
-    private static final int KEYSB_STRGC       = 1;		// ^C
-    private static final int KEYSB_STRGR       = 2;		// ^C
-    private static final int KEYSB_BEL         = 3;		// BEL
-    private static final int KEYSB_BEL_CONTENT = 4;		// Text for last BEL
-    private static final int KEYSB_DONE        = 5;		// Key is done, no output to database
-    private static final int KEYSB_INIT_TERM   = 6;    	// First output on terminal screen
-    private static final int KEYSB_INIT_TERM_P = 7;    	// First output prompt on terminal screen
-    private static final int KEYSB_UNKNOWN     = -1;	// unknown command or input
+	private StringBuilder sbLast = new StringBuilder();
 
 	private static final int BEL = 7;
 	private static final int BS  = 8;
@@ -23,25 +15,11 @@ public class SessionOutputCommand {
 	private static final String CURSOR_RIGHT 				           = Character.toString((char)ESC)+"[C";
 	private static final String CURSOR_DELETE_FROM_POSITION_TO_END     = CHAR_ESC+"[K";
 	private static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_ESC+"[";  // n"P"
-	private static final String STRING_STRG_R                          = "reverse-i-search";
-    private static final String STRING_STRG_R_PROMT_PART			   = CHAR_BS+CHAR_BS+CHAR_BS+CHAR_ESC+"["; // 23@ .. "': "
 	private static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[";	// n@	 next letter is that for insert
 	private static final String STRING_STRG_R_INSERT_MASK              = "': ";		// next letter is that for insert
-    private static final String STRING_EC2_USER 					   = "[ec2-user";
-    private static final String STRING_DOLLAR_BLANC 				   = "$ ";
 
     private static boolean activeBell  = false;
-    private static boolean checkBelCommand = false;
-    private static StringBuilder  belCommandBehindDollar = new StringBuilder();
     private static boolean activeStrgR = false;
-    private 	   StringBuilder outCommand   		= new StringBuilder();
-    private static StringBuilder outputFromCommand  = new StringBuilder();
-
-    private static boolean activePrompt = false;
-
-    private static int iPosUser   = 0;
-    private static int iPosDollar = 0;
-
     private long cursorPosition = 0;
 
 	/**
@@ -49,8 +27,8 @@ public class SessionOutputCommand {
 	 * @param inputLine
 	 * @param sb
 	 */
-	public void adChar(List<StringBuilder> inputLine, StringBuilder sb) {
-		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
+	public void adChar(StringBuilder sb) {
+//		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
 		if(1 == sb.length()) {
 			if(CHAR_BS.contains(sb)) {
 				cursorPosition--;
@@ -58,7 +36,8 @@ public class SessionOutputCommand {
 				sbLast.append(sb);
 				cursorPosition++;
 			}
-			inputLine.set(0, sbLast);
+			System.out.println("adChar - sbLast start, adding <"+sbLast.toString()+" - "+sb.toString()+">");
+//			inputLine.set(0, sbLast);
 //			setCursorPosition(sbLast, cursorPosition);
 		}
 	}
@@ -68,47 +47,42 @@ public class SessionOutputCommand {
 	 * @param inputLine
 	 * @param sb
 	 */
-	public void evaluateInput(List<StringBuilder> inputLine, StringBuilder sb) {
+	public void evaluateInput(StringBuilder sb) {
 		//
 		// find command for the result from the host
+		System.out.println("buildCommandLine - sbLast start <"+sbLast.toString()+">");
 		getBel(sb);
 		String input       = sb.toString();
-		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
-		if(0 < inputLine.size()) {
-			int iCursurRight 	= getCursorRght(sb);
-			if( 0 < iCursurRight){
-				setCursorPosition(sbLast, cursorPosition+iCursurRight);
-			}
-			int lettersToDelete 			= getDeleteCharactersBackFromPos(sb);
-			int cursorCountOfBSbeforeText 	= getCountOfBSbeforeText(sb);
-			int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb, sbLast);	// ClenUp ESC{K
-			cursorDeleteFromPositioToEnd = 0;
-			System.out.println("buildCommandLine - buildCommandLine sbLast start <"+sbLast.toString()+">");
-			if(1 == input.length()) {
-				if(CHAR_BS.contains(sb)) {
-					cursorPosition--;
-				} else {
-					sbLast.append(sb);
-					cursorPosition++;
-				}
-				setCursorPosition(sbLast, cursorPosition);
-			} else if(activeBell) {
-				System.out.println("buildCommandLine - TAB / BEL is active !");
-			} else if(activeStrgR) {
-				checkStrgR(sb, sbLast, iCursurRight, lettersToDelete, cursorDeleteFromPositioToEnd);
-//				activeStrgR = false;
-			} else if( (-1 == cursorDeleteFromPositioToEnd) && checkInsertKey(sb, sbLast, lettersToDelete)){
-
-			} else if (checkOverWriteCommand(sb, sbLast, cursorCountOfBSbeforeText, lettersToDelete, cursorDeleteFromPositioToEnd)) {
-
-			}
-//			this.outCommand = sbLast;
-			inputLine.set(0, sbLast);
-
-		} else {
-			inputLine.add(sb);
+		//		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
+		int iCursurRight 	= getCursorRght(sb);
+		if( 0 < iCursurRight){
+			setCursorPosition(sbLast, cursorPosition+iCursurRight);
 		}
-		System.out.println("buildCommandLine - buildCommandLine sbLast, sb end <"+sbLast.toString()+"-- , --"+sb.toString()+">");
+		int cursorCountOfBSbeforeText 	= getCountOfBSbeforeText(sb);
+		int lettersToDelete 			= getDeleteCharactersBackFromPos(sb);
+		int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb, sbLast);	// ClenUp ESC{K
+		if(1 == input.length()) {
+			if(CHAR_BS.contains(sb)) {
+				cursorPosition--;
+			} else {
+				sbLast.append(sb);
+				cursorPosition++;
+			}
+			setCursorPosition(sbLast, cursorPosition);
+		} else if(activeBell) {
+			System.out.println("buildCommandLine - TAB / BEL is active !");
+		} else if(activeStrgR) {
+			checkStrgR(sb, iCursurRight, lettersToDelete, cursorDeleteFromPositioToEnd);
+			//				activeStrgR = false;
+		} else if( (-1 == cursorDeleteFromPositioToEnd) && checkInsertKey(sb, sbLast, lettersToDelete)){
+
+		} else if (checkOverWriteCommand(sb, sbLast, cursorCountOfBSbeforeText, lettersToDelete, cursorDeleteFromPositioToEnd)) {
+
+		}
+		//			this.outCommand = sbLast;
+		//			inputLine.set(0, sbLast);
+
+		System.out.println("buildCommandLine - sbLast, sb end <"+sbLast.toString()+"-- , --"+sb.toString()+">");
 		return;
 	}
 	/**
@@ -121,7 +95,7 @@ public class SessionOutputCommand {
 	 * @param lettersToDelete2
 	 * @return
 	 */
-	private boolean checkStrgR(StringBuilder sb, StringBuilder sbLast, int cursorRight, int lettersToDelete, int cursorBackFromEnd) {
+	private boolean checkStrgR(StringBuilder sb, int cursorRight, int lettersToDelete, int cursorBackFromEnd) {
 		boolean bBack = false;
 		// reverse search is active when these method is called
 		//
@@ -421,9 +395,21 @@ public class SessionOutputCommand {
 	private static int getCursorDeleteFromPositionToEnd(StringBuilder sb, StringBuilder sbLast) {
 		//
 		//	count number of "ESC[K"
-		int iPos   = sb.indexOf(CURSOR_DELETE_FROM_POSITION_TO_END);
+		int iPos     = 0;
+		int iPosBS   = 0;
 		while(-1 <(iPos = sb.indexOf(CURSOR_DELETE_FROM_POSITION_TO_END))) {
-			sb.delete(iPos, iPos+CURSOR_DELETE_FROM_POSITION_TO_END.length());
+			//
+			// Check for leading BS
+			int iLen     = CURSOR_DELETE_FROM_POSITION_TO_END.length();
+			if(0 < iPos) {
+				iPosBS = iPos-1;
+				if(BS == sb.charAt(iPosBS)) {
+					iLen++;
+					iPos=iPosBS;
+				}
+			}
+			sb.delete(iPos, iPos+iLen);
+
 			if(0 < sbLast.length()) {
 				sbLast.deleteCharAt(sbLast.length()-1);
 			}
@@ -487,7 +473,23 @@ public class SessionOutputCommand {
 		return cKey;
 	}
 
+	public StringBuilder getSbLast() {
+		return sbLast;
+	}
 
+	public void setSbLast(StringBuilder sbLastInput) {
+		clean(sbLast);
+		sbLast.append(sbLastInput);
+	}
 
-
+	/**
+	 * Cleans up the buffer
+	 *
+	 * @param sbBuffer
+	 */
+	private void clean(StringBuilder sbBuffer) {
+		if(0 < sbBuffer.length()) {
+			sbBuffer.delete(0, sbBuffer.length());
+		}
+	}
 }

@@ -18,6 +18,7 @@ package com.keybox.manage.task;
 import com.google.gson.Gson;
 import com.keybox.manage.model.SessionOutput;
 import com.keybox.manage.util.DBUtils;
+import com.keybox.manage.util.SessionOutputAudit;
 import com.keybox.manage.util.SessionOutputUtil;
 
 import javax.websocket.Session;
@@ -49,10 +50,11 @@ public class SentOutputTask implements Runnable {
         inputLine.add(new StringBuilder());		// 2	-	Last Login message from start
         inputLine.add(new StringBuilder());		// 3	-	prompt
         inputLine.add(new StringBuilder());		// 4	-	Coded position of the cursor in LastCommand
-        
-        
+        SessionOutputAudit audit = new SessionOutputAudit();
+
+
         while (session.isOpen()) {
-            List<SessionOutput> outputList = SessionOutputUtil.getOutput(con, sessionId, inputLine);
+            List<SessionOutput> outputList = SessionOutputUtil.getOutput(con, sessionId, inputLine, audit);
             try {
                 if (outputList != null && !outputList.isEmpty()) {
                     String json = new Gson().toJson(outputList);
