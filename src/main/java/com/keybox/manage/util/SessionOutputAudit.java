@@ -30,7 +30,8 @@ public class SessionOutputAudit {
 	private static final String STRING_STRG_R                          = "reverse-i-search";
     private static final String STRING_EC2_USER 					   = "[ec2-user";
     private static final String STRING_DOLLAR_BLANC 				   = "$ ";
-    private static final String NEW_LINE 							   = System.getProperty("line.separator");
+//    private static final String NEW_LINE 							   = System.getProperty("line.separator");
+    private static final String NEW_LINE 							   = Character.toString((char)13)+"\n";
 
     private static boolean activeBell  = false;
     private static boolean checkBelCommand = false;
@@ -91,7 +92,6 @@ public class SessionOutputAudit {
 			{
 				//
 				// check for prompt in key
-
 				sessionOutput.setOutput(outputFromCommand.toString());
 				SessionAuditDB.insertTerminalLog(con, sessionOutput);
 				clean(outputFromCommand);
@@ -145,7 +145,6 @@ public class SessionOutputAudit {
 		System.out.println("changeInput - getting <"+sb.toString()+">");
 		int     keySb  = KEYSB_UNKNOWN;
 		boolean isCommand = true;
-//		SessionOutputCommand command = new SessionOutputCommand();
 		//
 		// First check length of input
 		switch (sb.length()) {
@@ -160,7 +159,6 @@ public class SessionOutputAudit {
 				activeBell = true;
 			} else {
 				command.adChar(sb);
-//				buildCommandLine(inputLine, sb);	// key from input
 			}
 			break;
 		}
@@ -171,8 +169,9 @@ public class SessionOutputAudit {
 			int 	iEnd		= sb.indexOf(NEW_LINE);
 			//
 			// check for an output or command
-			while((-1 < iStart) && (-1 < (iEnd = sb.indexOf(NEW_LINE, iStart+NEW_LINE.length())))) {
-				String line = sb.substring(iStart, iEnd+NEW_LINE.length());
+			while((-1 < iStart) && (-1 < (iEnd = sb.indexOf(NEW_LINE, iStart)))) {
+				iEnd += NEW_LINE.length();
+				String line = sb.substring(iStart, iEnd);
 
 				arrSbLines.add(new StringBuilder(line));
 				iStart = iEnd;
@@ -190,7 +189,6 @@ public class SessionOutputAudit {
 				activePrompt = checkPrompt(sb);
 				if((-1<sb.indexOf(STRING_STRG_R))) {				// StrgR reverse search
 					keySb = KEYSB_STRGR;
-//					inputLine.set(1, new StringBuilder(STRING_STRG_R));
 					activeStrgR = true;
 				} else if(activePrompt) {
 					if(0 == inputLine.get(3).length()) {
@@ -198,7 +196,6 @@ public class SessionOutputAudit {
 						keySb = KEYSB_INIT_TERM_P;
 					} else {
 						command.setSbLast(belCommandBehindDollar);
-//						inputLine.set(0, belCommandBehindDollar);
 						keySb = KEYSB_CR;
 					}
 				} else if(0 < sb.length())	{ // One character
@@ -207,34 +204,42 @@ public class SessionOutputAudit {
 					//
 					getBel(sb);
 					command.evaluateInput(sb, activeBell, activeStrgR);
-//					buildCommandLine(inputLine, sb);
 				}
-
-				// buildCommandLine ???
 				break;
 			}
 			default:
 			{
+				boolean loadOutput = false;
 				if(0 == sb.indexOf("Last login:")) {			// first message on the terminal
 					keySb = KEYSB_INIT_TERM;
 					inputLine.set(2, sb);
-					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+					loadOutput = true;
+//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
 					isCommand = false;
 				} else if(activeBell) {
-					outputFromCommand.append(checkOutFromCommand(arrSbLines));
-					command.setSbLast(belCommandBehindDollar);
-//					inputLine.set(0, belCommandBehindDollar);
+//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+					loadOutput = true;
+//					command.setSbLast(belCommandBehindDollar);
 					keySb = KEYSB_CR;
 				} else if( activeStrgR) {
-					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+					loadOutput = true;
 					activeStrgR = false;
 					keySb = KEYSB_CR;
 				} else if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
-					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+					loadOutput = true;
 					keySb  = KEYSB_CR;
 				} else if( ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'))) { // StrgC
-					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+					loadOutput = true;
 					keySb  = KEYSB_STRGC;
+				}
+				if(loadOutput) {
+					outputFromCommand.append(checkOutFromCommand(arrSbLines));
+					if(activeBell) {
+						command.setSbLast(belCommandBehindDollar);
+					}
 				}
 				if((0 < outputFromCommand.length()) && !activePrompt) {
 					keySb  = KEYSB_WAIT_PROMPT;
@@ -250,7 +255,7 @@ public class SessionOutputAudit {
 
 			if(!isCommand && checkPrompt(sb) && (KEYSB_INIT_TERM != keySb)) {
 				System.out.println("changeInput - found prompt inputLine.get(1) , BEL, StrgR <"+inputLine.get(1).toString()+","+Boolean.valueOf(activeBell).toString()+","+Boolean.valueOf(activeStrgR).toString()+">");
-				if(activeStrgR || inputLine.get(1).toString().contains(STRING_STRG_R)) {
+				if(activeStrgR) {
 					keySb = KEYSB_CR;
 				}
 			}

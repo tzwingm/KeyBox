@@ -1,6 +1,5 @@
 package com.keybox.manage.util;
 
-import java.util.List;
 
 public class SessionOutputCommand {
 
@@ -29,7 +28,6 @@ public class SessionOutputCommand {
 	 * @param sb
 	 */
 	public void adChar(StringBuilder sb) {
-//		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
 		if(1 == sb.length()) {
 			if(CHAR_BS.contains(sb)) {
 				cursorPosition--;
@@ -38,38 +36,37 @@ public class SessionOutputCommand {
 				cursorPosition++;
 			}
 			System.out.println("adChar - sbLast start, adding <"+sbLast.toString()+" - "+sb.toString()+">");
-//			inputLine.set(0, sbLast);
-//			setCursorPosition(sbLast, cursorPosition);
 		}
 	}
 
 	/**
-	 * get the inputline
-	 * @param inputLine
-	 * @param sb
-	 * @param activeStrgR2
-	 * @param activeBell2
-	private static final String CURSOR_RIGHT 				           = Character.toString((char)ESC)+"[C";
-	private static final String CURSOR_DELETE_FROM_POSITION_TO_END     = CHAR_ESC+"[K";
-	private static final String CURSOR_DELETE_CHARACTERS_BACK_FROM_POS = CHAR_ESC+"[";  // n"P"
-	private static final String STRING_STRG_R_INSERT_KEY               = CHAR_ESC+"[";	// n@	 next letter is that for insert
+	 * Evaluate the snippet from input
+	 * @param sb			- next data from input
+	 * @param activeBell2	- we have active BEL / TAB
+	 * @param activeStrgR2	- we have active StrgR
 	 */
 	public void evaluateInput(StringBuilder sb, boolean activeBell2, boolean activeStrgR2) {
 		//
 		// find command for the result from the host
-		System.out.println("evaluateInput-start activeBell, activeStrgR, sbLast <"+Boolean.valueOf(activeBell2).toString()+Boolean.valueOf(activeBell2).toString()+sbLast.toString()+">");
-		int cp 	= getCursorPosition(sb);
-		if(-1 < cp) {	// BS given, take new computed position
-			cursorPosition = cp;
-		} else if(cursorPosition > sbLast.length()) {
-			cursorPosition = sbLast.length();	// set defined to
+		activeBell  = activeBell2;
+		if(activeStrgR != activeStrgR2) {
+			cursorPosition = 0;
+			clean(sbLast);
+			activeStrgR = activeStrgR2;
 		}
+		System.out.println("evaluateInput-start activeBell, activeStrgR, sbLast <"+Boolean.valueOf(activeBell2).toString()+","+Boolean.valueOf(activeStrgR2).toString()+","+sbLast.toString()+">");
+		int cp 	= getCursorPosition(sb);
 		//
 		// now search for ESC sequences
 		while(0 < sb.length()) {
 			int iEnd = 0;
 			switch(sb.charAt(0)) {
-			case ESC:
+			case BS:	// BS behind the text, comes mostly from StrgR command for the cursor position
+			{
+				cp 	= getCursorPosition(sb);
+				break;
+			}
+			case ESC:	// start of several sequences
 			{
 				if((2 < sb.length()) && ('[' == sb.charAt(1))) {
 					sb.delete(0, 2);	// delete ESC[
@@ -77,7 +74,9 @@ public class SessionOutputCommand {
 					case 'C':	// cursor right
 					{
 						sb.delete(0, 1);
-						cursorPosition++;
+						if(cursorPosition < sbLast.length()) {
+							cursorPosition++;
+						}
 						break;
 					}
 					case 'K':	// delete from cursor to end
@@ -125,40 +124,7 @@ public class SessionOutputCommand {
 			}
 			}
 		}
-		if(false) {
-			String input       	= sb.toString();
-			//		StringBuilder sbLast = new StringBuilder(inputLine.get(0));
-			activeBell 			= activeBell2;
-			activeStrgR 		= activeStrgR2;
-			int iCursurRight 	= getCursorRght(sb);
-			if( 0 < iCursurRight){
-				setCursorPosition(sbLast, cursorPosition+iCursurRight);
-			}
-			int cursorCountOfBSbeforeText 	= getCountOfBSbeforeText(sb);
-			int lettersToDelete 			= getDeleteCharactersBackFromPos(sb);
-			int cursorDeleteFromPositioToEnd= getCursorDeleteFromPositionToEnd(sb, sbLast);	// ClenUp ESC{K
-			if(1 == input.length()) {
-				if(CHAR_BS.contains(sb)) {
-					cursorPosition--;
-				} else {
-					sbLast.append(sb);
-					cursorPosition++;
-				}
-				setCursorPosition(sbLast, cursorPosition);
-			} else if(activeBell) {
-				System.out.println("evaluateInput - TAB / BEL is active !");
-			} else if(activeStrgR) {
-				checkStrgR(sb, iCursurRight, lettersToDelete, cursorDeleteFromPositioToEnd);
-				//				activeStrgR = false;
-			} else if( (-1 == cursorDeleteFromPositioToEnd) && checkInsertKey(sb, sbLast, lettersToDelete)){
-
-			} else if (checkOverWriteCommand(sb, sbLast, cursorCountOfBSbeforeText, lettersToDelete, cursorDeleteFromPositioToEnd)) {
-
-			}
-			//			this.outCommand = sbLast;
-			//			inputLine.set(0, sbLast);
-		}
-		System.out.println("evaluateInput - end sbLast, sb <"+sbLast.toString()+"-- , --"+sb.toString()+">");
+		System.out.println("evaluateInput - end sbLast, sb, cursorPosition <"+sbLast.toString()+"-- , --"+sb.toString()+"-- , --"+cursorPosition+">");
 		return;
 	}
 
@@ -201,13 +167,24 @@ public class SessionOutputCommand {
 	 * @return -1, for no BS in start of sb
 	 */
 	private int getCursorPosition(StringBuilder sb) {
-		int cursorPosition = -1;
+		int cP = cursorPosition;
 		if( (0 < sb.length()) && (BS == sb.charAt(0)) ) {
 			int countOfBSbeforeText = getCountOfBSbeforeText(sb);
 			if(-1 < countOfBSbeforeText) {
 				sb.delete(0, countOfBSbeforeText);
-				cursorPosition = sbLast.length()-countOfBSbeforeText;
+				if(activeStrgR) {
+					cP -= countOfBSbeforeText;
+				} else {
+					cP = sbLast.length()-countOfBSbeforeText;
+				}
 			}
+		}
+		if(0 > cP) {	// BS given, take new computed position
+			cursorPosition = 0;
+		} else if(cursorPosition > sbLast.length()) {
+			cursorPosition = sbLast.length();	// set defined to
+		} else {
+			cursorPosition = cP;
 		}
 		return cursorPosition;
 	}
