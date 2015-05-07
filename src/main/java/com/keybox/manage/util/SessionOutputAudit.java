@@ -214,24 +214,18 @@ public class SessionOutputAudit {
 					keySb = KEYSB_INIT_TERM;
 					inputLine.set(2, sb);
 					loadOutput = true;
-//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
 					isCommand = false;
 				} else if(activeBell) {
-//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
 					loadOutput = true;
-//					command.setSbLast(belCommandBehindDollar);
 					keySb = KEYSB_CR;
 				} else if( activeStrgR) {
-//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
 					loadOutput = true;
 					activeStrgR = false;
 					keySb = KEYSB_CR;
 				} else if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
-//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
 					loadOutput = true;
 					keySb  = KEYSB_CR;
 				} else if( ((sb.charAt(0) == '^') && (sb.charAt(1) == 'C'))) { // StrgC
-//					outputFromCommand.append(checkOutFromCommand(arrSbLines));
 					loadOutput = true;
 					keySb  = KEYSB_STRGC;
 				}
@@ -259,16 +253,6 @@ public class SessionOutputAudit {
 					keySb = KEYSB_CR;
 				}
 			}
-		}
-
-		if (KEYSB_UNKNOWN == keySb){
-			/*
-			// At this point we get the optimized Inputs
-			//
-			if(0 < input.length())	{ // One character
-				buildCommandLine(inputLine, sb);
-			}
-			*/
 		}
 
 		return keySb;
