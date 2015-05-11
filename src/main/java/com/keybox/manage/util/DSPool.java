@@ -15,8 +15,20 @@
  */
 package com.keybox.manage.util;
 
-import org.apache.commons.dbcp.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+import org.apache.commons.dbcp.ConnectionFactory;
+import org.apache.commons.dbcp.DriverManagerConnectionFactory;
+import org.apache.commons.dbcp.PoolableConnectionFactory;
+import org.apache.commons.dbcp.PoolingDataSource;
 import org.apache.commons.pool.impl.GenericObjectPool;
+
+import com.keybox.common.util.AppConfig;
+
 
 /**
  * Class to create a pooling data source object using commons DBCP
@@ -29,6 +41,7 @@ public class DSPool {
 
 
     private static PoolingDataSource dsPool;
+    private static PoolingDataSource dsPoolAudit;
 
 
     /**
@@ -62,7 +75,7 @@ public class DSPool {
 
         String validationQuery = "select 1";
 
-        try {
+       try {
             Class.forName("org.h2.Driver");
         } catch (ClassNotFoundException ex) {
             ex.printStackTrace();
@@ -87,6 +100,91 @@ public class DSPool {
 
     }
 
+    /**
+     * fetches the data source for H2 db
+     *
+     * @return data source pool
+     */
+
+    public static org.apache.commons.dbcp.PoolingDataSource getAuditDataSource() {
+        if (dsPoolAudit == null) {
+
+            dsPoolAudit = registerAuditDataSource();
+        }
+        return dsPoolAudit;
+
+    }
+
+	private static PoolingDataSource registerAuditDataSource() {
+//      String userAudit = "keybox";
+//		String passwordAudit = "filepwd 45WJLnwhpA47EepT162hrVnDn3vYRvJhpZi0sVdvN9Sdsf";
+//      String connectionURIAudit = "jdbc:h2:" + DB_PATH + "/keybox;CIPHER=AES";
+/*        Connection con = null;
+        Statement st = null;
+        ResultSet rs = null;
+*/
+        String connectionURIAudit = "jdbc:postgresql://localhost:5432/testdb";
+        String userAudit = "ritters";
+        String passwordAudit = "ritters";
+
+        String validationQuery = "select 1";
+
+        connectionURIAudit 	= AppConfig.getProperty("urlPostGreAudit");
+        userAudit			= AppConfig.getProperty("userPostGreAudit");
+        passwordAudit 		= AppConfig.getProperty("passwordPostGreAudit");
+
+        try {
+            Class.forName("org.postgresql.Driver");
+        } catch (ClassNotFoundException ex) {
+            ex.printStackTrace();
+        }
+
+/*
+        try {
+            con = DriverManager.getConnection(connectionURIAudit, userAudit, passwordAudit);
+            st = con.createStatement();
+            rs = st.executeQuery("SELECT VERSION()");
+
+            if (rs.next()) {
+                System.out.println(rs.getString(1));
+            }
+
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+
+        } finally {
+            try {
+                if (rs != null) {
+                    rs.close();
+                }
+                if (st != null) {
+                    st.close();
+                }
+                if (con != null) {
+                    con.close();
+                }
+
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+*/
+        GenericObjectPool connectionPool = new GenericObjectPool(null);
+
+        connectionPool.setMaxActive(25);
+        connectionPool.setTestOnBorrow(true);
+        connectionPool.setMinIdle(2);
+        connectionPool.setMaxWait(15000);
+        connectionPool.setWhenExhaustedAction(GenericObjectPool.WHEN_EXHAUSTED_BLOCK);
+
+
+        ConnectionFactory connectionFactory = new DriverManagerConnectionFactory(connectionURIAudit, userAudit, passwordAudit);
+
+
+        new PoolableConnectionFactory(connectionFactory, connectionPool, null, validationQuery, false, true);
+
+        return new PoolingDataSource(connectionPool);
+	}
 
 }
 

@@ -219,9 +219,13 @@ public class SessionOutputAudit {
 					loadOutput = true;
 					keySb = KEYSB_CR;
 				} else if( activeStrgR) {
-					loadOutput = true;
-					activeStrgR = false;
-					keySb = KEYSB_CR;
+					if(2 == arrSbLines.size()) {
+						System.out.println("changeInput - skip <"+sb.toString()+">");
+					} else {
+						loadOutput = true;
+						activeStrgR = false;
+						keySb = KEYSB_CR;
+					}
 				} else if(((sb.charAt(0) == 13) && (sb.charAt(1) == 10))) {	// CRLF
 					loadOutput = true;
 					keySb  = KEYSB_CR;

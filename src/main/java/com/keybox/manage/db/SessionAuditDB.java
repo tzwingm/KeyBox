@@ -41,7 +41,7 @@ public class SessionAuditDB {
 
     public static final String FILTER_BY_USER_ID = "user_id";
     public static final String FILTER_BY_SYSTEM_ID = "system_id";
-    
+
     public static final String SORT_BY_FIRST_NM = "first_nm";
     public static final String SORT_BY_LAST_NM = "last_nm";
     public static final String SORT_BY_EMAIL = "email";

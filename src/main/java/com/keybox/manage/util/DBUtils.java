@@ -46,6 +46,23 @@ public class DBUtils {
     }
 
     /**
+     * returns DB connection
+     *
+     * @return DB connection
+     */
+    public static Connection getAuditConn() {
+        Connection con = null;
+        try{
+            con=DSPool.getAuditDataSource().getConnection();
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        return con;
+
+    }
+
+    /**
      * close DB connection
      *
      * @param con DB connection

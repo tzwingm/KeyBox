@@ -61,7 +61,7 @@ public class DBInitServlet extends javax.servlet.http.HttpServlet {
 			if (rs == null || !rs.next()) {
 				resetSSHKey = true;
 				statement.executeUpdate("create table if not exists users (id INTEGER PRIMARY KEY AUTO_INCREMENT, first_nm varchar, last_nm varchar, email varchar, username varchar not null, password varchar, auth_token varchar, enabled boolean not null default true, auth_type varchar not null default '" + Auth.AUTH_BASIC+ "', user_type varchar not null default '" + Auth.ADMINISTRATOR + "', salt varchar, otp_secret varchar)");
-				
+
 				statement.executeUpdate("create table if not exists user_theme (user_id INTEGER PRIMARY KEY, bg varchar(7), fg varchar(7), d1 varchar(7), d2 varchar(7), d3 varchar(7), d4 varchar(7), d5 varchar(7), d6 varchar(7), d7 varchar(7), d8 varchar(7), b1 varchar(7), b2 varchar(7), b3 varchar(7), b4 varchar(7), b5 varchar(7), b6 varchar(7), b7 varchar(7), b8 varchar(7), foreign key (user_id) references users(id) on delete cascade) ");
 
 				statement.executeUpdate("create table if not exists system (id INTEGER PRIMARY KEY AUTO_INCREMENT, display_nm varchar not null, user varchar not null, host varchar not null, port INTEGER not null, authorized_keys varchar not null, status_cd varchar not null default 'INITIAL')");
@@ -92,6 +92,58 @@ public class DBInitServlet extends javax.servlet.http.HttpServlet {
 			}
 			DBUtils.closeRs(rs);
 
+			//
+			// TODO, not ready until now !
+			// open PostgreSql database
+			// Problem actual : id AUTO_INCREMENT does not work so easily in PostGreSql
+			//
+			boolean enableAudit = "true".equals(AppConfig.getProperty("enableAudit"));
+			if(enableAudit) {
+				Connection connectionAudit = null;
+				if("true".equals(AppConfig.getProperty("enableAuditExternalDb"))) {
+					connectionAudit = DBUtils.getAuditConn();
+					statement = connectionAudit.createStatement();
+
+					ResultSet rsAudit = statement.executeQuery("select * from information_schema.tables where upper(table_name) = 'USERS' and table_schema='PUBLIC'");
+					if (rsAudit == null || !rsAudit.next()) {
+						resetSSHKey = true;
+// Modified				statement.executeUpdate("create table if not exists users (id INTEGER PRIMARY KEY AUTO_INCREMENT, first_nm varchar, last_nm varchar, email varchar, username varchar not null, password varchar, auth_token varchar, enabled boolean not null default true, auth_type varchar not null default '" + Auth.AUTH_BASIC+ "', user_type varchar not null default '" + Auth.ADMINISTRATOR + "', salt varchar, otp_secret varchar)");
+						statement.executeUpdate("create table if not exists users (id INTEGER PRIMARY KEY, first_nm varchar, last_nm varchar, email varchar, username varchar not null, password varchar, auth_token varchar, enabled boolean not null default true, auth_type varchar not null default '" + Auth.AUTH_BASIC+ "', user_type varchar not null default '" + Auth.ADMINISTRATOR + "', salt varchar, otp_secret varchar)");
+						/*
+
+						statement.executeUpdate("create table if not exists user_theme (user_id INTEGER PRIMARY KEY, bg varchar(7), fg varchar(7), d1 varchar(7), d2 varchar(7), d3 varchar(7), d4 varchar(7), d5 varchar(7), d6 varchar(7), d7 varchar(7), d8 varchar(7), b1 varchar(7), b2 varchar(7), b3 varchar(7), b4 varchar(7), b5 varchar(7), b6 varchar(7), b7 varchar(7), b8 varchar(7), foreign key (user_id) references users(id) on delete cascade) ");
+*/
+//						statement.executeUpdate("create table if not exists system (id INTEGER PRIMARY KEY AUTO_INCREMENT, display_nm varchar not null, user varchar not null, host varchar not null, port INTEGER not null, authorized_keys varchar not null, status_cd varchar not null default 'INITIAL')");
+						statement.executeUpdate("create table if not exists system (id INTEGER PRIMARY KEY, display_nm varchar not null, user_name varchar not null, host varchar not null, port INTEGER not null, authorized_keys varchar not null, status_cd varchar not null default 'INITIAL')");
+/*						statement.executeUpdate("create table if not exists profiles (id INTEGER PRIMARY KEY AUTO_INCREMENT, nm varchar not null, desc varchar not null)");
+						statement.executeUpdate("create table if not exists system_map (profile_id INTEGER, system_id INTEGER, foreign key (profile_id) references profiles(id) on delete cascade , foreign key (system_id) references system(id) on delete cascade, primary key (profile_id, system_id))");
+						statement.executeUpdate("create table if not exists user_map (user_id INTEGER, profile_id INTEGER, foreign key (user_id) references users(id) on delete cascade, foreign key (profile_id) references profiles(id) on delete cascade, primary key (user_id, profile_id))");
+						statement.executeUpdate("create table if not exists application_key (id INTEGER PRIMARY KEY AUTO_INCREMENT, public_key varchar not null, private_key varchar not null, passphrase varchar)");
+
+						statement.executeUpdate("create table if not exists status (id INTEGER, user_id INTEGER, status_cd varchar not null default 'INITIAL', foreign key (id) references system(id) on delete cascade, foreign key (user_id) references users(id) on delete cascade, primary key(id, user_id))");
+						statement.executeUpdate("create table if not exists scripts (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER, display_nm varchar not null, script varchar not null, foreign key (user_id) references users(id) on delete cascade)");
+
+
+						statement.executeUpdate("create table if not exists public_keys (id INTEGER PRIMARY KEY AUTO_INCREMENT, key_nm varchar not null, type varchar, fingerprint varchar, public_key varchar, enabled boolean not null default true, create_dt timestamp not null default CURRENT_TIMESTAMP(),  user_id INTEGER, profile_id INTEGER, foreign key (profile_id) references profiles(id) on delete cascade, foreign key (user_id) references users(id) on delete cascade)");
+*/
+// Modified						statement.executeUpdate("create table if not exists session_log (id BIGINT PRIMARY KEY AUTO_INCREMENT, user_id INTEGER, session_tm timestamp default CURRENT_TIMESTAMP, foreign key (user_id) references users(id) on delete cascade )");
+						statement.executeUpdate("create table if not exists session_log (id BIGINT PRIMARY KEY, user_id INTEGER, session_tm timestamp default CURRENT_TIMESTAMP, foreign key (user_id) references users(id) on delete cascade )");
+						statement.executeUpdate("create table if not exists terminal_log (session_id BIGINT, instance_id INTEGER, system_id INTEGER, output varchar not null, log_tm timestamp default CURRENT_TIMESTAMP, foreign key (session_id) references session_log(id) on delete cascade, foreign key (system_id) references system(id) on delete cascade)");
+/*
+						//insert default admin user
+						String salt = EncryptionUtil.generateSalt();
+						PreparedStatement pStmtAudit = connectionAudit.prepareStatement("insert into users (username, password, user_type, salt) values(?,?,?,?)");
+						pStmtAudit.setString(1, "admin");
+						pStmtAudit.setString(2, EncryptionUtil.hash("changeme" + salt));
+						pStmtAudit.setString(3, Auth.MANAGER);
+						pStmtAudit.setString(4, salt);
+						pStmtAudit.execute();
+						DBUtils.closeStmt(pStmtAudit);
+*/
+					}
+					DBUtils.closeRs(rsAudit);
+				}
+			}
 			//if reset ssh application key then generate new key
 			if (resetSSHKey) {
 
@@ -127,7 +179,7 @@ public class DBInitServlet extends javax.servlet.http.HttpServlet {
 				AppConfig.updateProperty("publicKey", "");
 				AppConfig.updateProperty("privateKey", "");
 				AppConfig.updateProperty("defaultSSHPassphrase", "${randomPassphrase}");
-				
+
 				//set to false
 				AppConfig.updateProperty("resetApplicationSSHKey", "false");
 
